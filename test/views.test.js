@@ -121,6 +121,8 @@ test('content page renders five per-content tasks and an initially locked video 
   assert.match(rendered, /Claim Task/);
   assert.match(rendered, /fa-arrow-up-right-from-square/);
   assert.match(rendered, /fa-circle-check/);
+  assert.match(rendered, /fa-circle-check[^>]*><\/i> Claim Task/);
+  assert.match(rendered, /fa-circle-check[^>]*><\/i> Completed/);
   assert.match(rendered, /button-success/);
   assert.match(rendered, /Watch \/ Download Now/);
   assert.match(rendered, /data-unlocked-content hidden/);
@@ -145,10 +147,12 @@ test('content page renders five per-content tasks and an initially locked video 
     tasks: taskSlots.map((task) => ({ ...task, started: true, completed: true })),
     allDone: true,
     completedTaskCount: 5,
-    unlockExpiresAt: new Date(Date.now() + 60 * 60 * 1000)
+    unlockExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    serverNow: new Date()
   });
   assert.match(unlocked, /href="\/content\/aaaaaaaaaaaaaaaaaaaaaaaa\/watch"/);
   assert.match(unlocked, /class="button button-primary watch-video-button" data-watch-video target="_blank"/);
+  assert.match(unlocked, /data-server-now="\d+"/);
   assert.match(unlocked, /Time remaining: <strong data-unlock-countdown>01:00:00<\/strong>/);
   assert.doesNotMatch(unlocked, /https:\/\/example\.test\/video/);
 });

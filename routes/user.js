@@ -271,6 +271,7 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
     ...(claim.unlockExpiresAt ? {
       watchUrl: `/content/${content._id}/watch`,
       unlockExpiresAt: claim.unlockExpiresAt,
+      serverNow: Date.now(),
       unlockReward: CONTENT_UNLOCK_REWARD_AMOUNT,
       balance: claim.balance
     } : {})
@@ -648,9 +649,10 @@ router.get('/content/:id', requireUser, [param('id').isMongoId()], validationErr
     started: startedSlots.has(slot),
     completed: completedSlots.has(slot)
   }));
-  const allDone = completedSlots.size === CONTENT_TASK_COUNT && progress?.unlockExpiresAt > new Date();
+  const serverNow = new Date();
+  const allDone = completedSlots.size === CONTENT_TASK_COUNT && progress?.unlockExpiresAt > serverNow;
   const unlockExpiresAt = allDone ? progress.unlockExpiresAt : null;
-  res.render('user/content', { title: content.title, user, content, tasks, allDone, completedTaskCount: completedSlots.size, unlockExpiresAt });
+  res.render('user/content', { title: content.title, user, content, tasks, allDone, completedTaskCount: completedSlots.size, unlockExpiresAt, serverNow });
 }));
 
 router.locals = { milestones };

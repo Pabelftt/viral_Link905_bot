@@ -268,6 +268,7 @@
                 const detail = document.querySelector('.content-detail');
                 if (detail && result.unlockExpiresAt) {
                   detail.dataset.unlockExpiresAt = String(new Date(result.unlockExpiresAt).getTime());
+                  detail.dataset.serverNow = String(result.serverNow);
                   scheduleContentUnlockExpiry(detail);
                 }
               }
@@ -288,11 +289,13 @@
 
   function scheduleContentUnlockExpiry(detail) {
     const expiresAt = Number(detail.dataset.unlockExpiresAt || 0);
-    const remaining = expiresAt - Date.now();
+    const serverNow = Number(detail.dataset.serverNow || Date.now());
+    const remaining = Math.max(0, expiresAt - serverNow);
+    const startedAt = performance.now();
     const countdown = detail.querySelector('[data-unlock-countdown]');
     if (countdown && remaining > 0) {
       const updateCountdown = () => {
-        const seconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+        const seconds = Math.max(0, Math.ceil((remaining - (performance.now() - startedAt)) / 1000));
         const hours = String(Math.floor(seconds / 3600)).padStart(2, '0');
         const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
         const remainder = String(seconds % 60).padStart(2, '0');
