@@ -42,10 +42,14 @@
 .admin-panel-heading a { color: var(--primary); font-size: 12px; font-weight: 700; }
 .admin-list-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border); }
 .admin-list-row:last-child { border-bottom: 0; }
+.admin-presence { margin-top: 16px; }
+.admin-presence .admin-panel-heading small { color: var(--muted); font-size: 10px; text-align: right; }
+.admin-presence-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 22px; }
 .admin-list-row > div { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .admin-list-row strong { font-size: 12px; text-transform: capitalize; }
 .admin-list-row small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .activity-dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: var(--primary); }
+.activity-dot.online { background: var(--success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 14%, transparent); }
 .withdraw-icon { display: grid; width: 33px; height: 33px; flex: 0 0 33px; place-items: center; border-radius: 11px; color: var(--success); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }
 .admin-search { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 15px; }
 .admin-search .search-bar { flex: 1; margin: 0; }
@@ -129,6 +133,7 @@ td input[type="checkbox"], th input[type="checkbox"] { width: 16px; min-height: 
   .admin-stat strong { font-size: 17px; }
   .admin-stat small { font-size: 9px; }
   .admin-two-col { grid-template-columns: 1fr; }
+  .admin-presence-list { grid-template-columns: 1fr; }
   .admin-topbar h1 { font-size: 23px; }
   .admin-topbar .admin-user { padding: 7px; font-size: 10px; }
   .admin-panel { padding: 13px; }

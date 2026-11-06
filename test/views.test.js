@@ -90,6 +90,39 @@ test('unlocked home cards get a green badge and balance header hides profile ide
   assert.doesNotMatch(rendered, /Private Name|@private_user/);
 });
 
+test('admin dashboard shows active user count and recent last-active times', async () => {
+  const now = new Date();
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'admin/dashboard.ejs'), {
+    title: 'Dashboard',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/admin',
+    adminUsername: 'admin',
+    stats: {
+      totalUsers: 4, activeUsers: 3, suspendedUsers: 0, totalContents: 2, totalCompletions: 1,
+      rewardTotal: 50, pendingWithdrawals: 0, approvedWithdrawals: 0, totalReferrals: 1
+    },
+    presence: {
+      activeUsers: 2,
+      serverNow: now,
+      users: [{
+        firstName: 'Active',
+        lastName: 'User',
+        username: 'active_user',
+        lastActiveAt: new Date(now.getTime() - 2 * 60000),
+        isOnline: true
+      }]
+    },
+    activities: [],
+    recentWithdrawals: []
+  });
+  assert.match(rendered, /Active now · 5m/);
+  assert.match(rendered, /data-active-user-count>2</);
+  assert.match(rendered, /@active_user/);
+  assert.match(rendered, /Active · 2 min ago/);
+  assert.match(rendered, /Recent user activity/);
+});
+
 test('content page renders five per-content tasks and an initially locked video link', async () => {
   const taskSlots = Array.from({ length: 5 }, (_, slot) => ({
     slot,

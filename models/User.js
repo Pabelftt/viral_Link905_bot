@@ -18,5 +18,6 @@ const userSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 userSchema.index({ firstName: 'text', lastName: 'text', username: 'text', telegramId: 'text' });
+userSchema.index({ isActive: 1, isSuspended: 1, lastActiveAt: -1 });
 
 module.exports = mongoose.model('User', userSchema);

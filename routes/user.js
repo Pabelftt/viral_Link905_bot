@@ -351,6 +351,16 @@ router.get('/api/me', requireUser, asyncRoute(async (req, res) => {
   res.json({ id: user.id, firstName: user.firstName, lastName: user.lastName, username: user.username, photoUrl: user.photoUrl, balance: user.balance, referralCount: user.referralCount });
 }));
 
+router.post('/api/user/presence', requireUser, requireCsrf, asyncRoute(async (req, res) => {
+  const updated = await User.findOneAndUpdate(
+    { _id: req.session.userId, isActive: true, isSuspended: false },
+    { $set: { lastActiveAt: new Date() } },
+    { new: true }
+  ).select('_id').lean();
+  if (!updated) return res.status(403).json({ error: 'This account is unavailable.' });
+  res.json({ ok: true });
+}));
+
 router.get('/api/contents', requireUser, [
   query('q').optional().isString().isLength({ max: 100 }),
   query('sort').optional().isIn(['latest', 'views', 'trending']),

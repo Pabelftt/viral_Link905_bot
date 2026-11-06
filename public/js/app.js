@@ -6,6 +6,7 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   window.__linkHubContentObserver?.disconnect();
   clearInterval(window.__linkHubRewardTimer);
+  clearInterval(window.__linkHubPresenceTimer);
   clearInterval(window.__linkHubUnlockCountdown);
   clearTimeout(window.__linkHubUnlockTimer);
   let toastTimer;
@@ -46,6 +47,31 @@
     } else {
       tg.BackButton?.hide();
     }
+  }
+
+  window.__linkHubPresenceHeartbeat = async () => {
+    if (!document.querySelector('[data-user-balance]') || document.visibilityState === 'hidden') return;
+    try {
+      const response = await fetch('/api/user/presence', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': csrfToken }
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Presence update failed (${response.status}).`);
+    } catch (error) {
+      console.error(error.message);
+    }
+  };
+  if (!window.__linkHubPresenceVisibilityBound) {
+    window.__linkHubPresenceVisibilityBound = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') window.__linkHubPresenceHeartbeat?.();
+    });
+  }
+  if (document.querySelector('[data-user-balance]')) {
+    window.__linkHubPresenceHeartbeat();
+    window.__linkHubPresenceTimer = setInterval(() => window.__linkHubPresenceHeartbeat(), 60000);
   }
 
   function notify(message, type = 'success') {

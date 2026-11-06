@@ -21,6 +21,9 @@ const { CONTENT_TASK_COUNT, DEFAULT_CONTENT_TASK_LINK } = require('../services/c
 const { DEFAULT_VIDEO_REWARD_LINK } = require('../services/dailyVideoReward');
 
 const router = express.Router();
+const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
+const RECENT_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RECENT_USER_LIMIT = 50;
 const loginLimiter = require('express-rate-limit').rateLimit({
   windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false,
   message: { error: 'Too many login attempts. Please wait and try again.' }
@@ -107,10 +110,35 @@ router.post('/admin/logout', asyncRoute(async (req, res) => {
   res.redirect('/admin/login');
 }));
 
+async function loadUserPresence() {
+  const now = new Date();
+  const activeSince = new Date(now.getTime() - ACTIVE_USER_WINDOW_MS);
+  const recentSince = new Date(now.getTime() - RECENT_USER_WINDOW_MS);
+  const [activeUsers, users] = await Promise.all([
+    User.countDocuments({ isActive: true, isSuspended: false, lastActiveAt: { $gte: activeSince } }),
+    User.find({ isActive: true, isSuspended: false, lastActiveAt: { $gte: recentSince } })
+      .select('firstName lastName username lastActiveAt')
+      .sort({ lastActiveAt: -1 })
+      .limit(RECENT_USER_LIMIT)
+      .lean()
+  ]);
+  return {
+    activeUsers,
+    users: users.map((user) => ({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      username: user.username,
+      lastActiveAt: user.lastActiveAt,
+      isOnline: user.lastActiveAt >= activeSince
+    })),
+    serverNow: now
+  };
+}
+
 router.get('/admin', asyncRoute(async (req, res) => {
   const [
     totalUsers, activeUsers, suspendedUsers, totalContents, totalCompletions, rewardTotal,
-    pendingWithdrawals, approvedWithdrawals, totalReferrals, activities, recentWithdrawals
+    pendingWithdrawals, approvedWithdrawals, totalReferrals, activities, recentWithdrawals, presence
   ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ isActive: true, isSuspended: false, lastActiveAt: { $gte: new Date(Date.now() - 30 * 86400000) } }),
@@ -122,11 +150,21 @@ router.get('/admin', asyncRoute(async (req, res) => {
     Withdrawal.countDocuments({ status: 'approved' }),
     Referral.countDocuments(),
     ActivityLog.find().sort({ createdAt: -1 }).limit(10).populate('actorId', 'firstName username').lean(),
-    Withdrawal.find().sort({ requestedAt: -1 }).limit(8).populate('userId', 'firstName telegramId').lean()
+    Withdrawal.find().sort({ requestedAt: -1 }).limit(8).populate('userId', 'firstName telegramId').lean(),
+    loadUserPresence()
   ]);
   res.render('admin/dashboard', {
     title: 'Dashboard', stats: { totalUsers, activeUsers, suspendedUsers, totalContents, totalCompletions, rewardTotal: rewardTotal[0]?.sum || 0, pendingWithdrawals, approvedWithdrawals, totalReferrals },
-    activities, recentWithdrawals
+    activities, recentWithdrawals, presence
+  });
+}));
+
+router.get('/admin/api/presence', asyncRoute(async (req, res) => {
+  const presence = await loadUserPresence();
+  res.json({
+    activeUsers: presence.activeUsers,
+    serverNow: presence.serverNow,
+    users: presence.users.map((user) => ({ ...user, lastActiveAt: user.lastActiveAt.toISOString() }))
   });
 }));
 

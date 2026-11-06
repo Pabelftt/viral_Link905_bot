@@ -1,5 +1,48 @@
 (() => {
   const notify = window.appNotify || (() => {});
+  const presencePanel = document.querySelector('[data-presence-panel]');
+  if (presencePanel) {
+    const activeCount = document.querySelector('[data-active-user-count]');
+    const presenceList = presencePanel.querySelector('[data-presence-list]');
+    const presenceStatus = presencePanel.querySelector('[data-presence-status]');
+    const renderPresence = ({ activeUsers, users, serverNow }) => {
+      activeCount.textContent = Number(activeUsers).toLocaleString();
+      presenceList.replaceChildren();
+      if (!users.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = 'No user activity in the last 24 hours.';
+        presenceList.append(empty);
+      } else {
+        users.forEach((user) => {
+          const row = document.createElement('div');
+          row.className = 'admin-list-row';
+          const dot = document.createElement('span');
+          dot.className = `activity-dot${user.isOnline ? ' online' : ''}`;
+          const copy = document.createElement('div');
+          const name = document.createElement('strong');
+          name.textContent = [user.firstName, user.lastName].filter(Boolean).join(' ');
+          const lastActive = document.createElement('small');
+          const minutesAgo = Math.max(0, Math.floor((new Date(serverNow) - new Date(user.lastActiveAt)) / 60000));
+          lastActive.textContent = `${user.username ? `@${user.username} · ` : ''}${user.isOnline ? 'Active · ' : ''}${minutesAgo ? `${minutesAgo} min ago` : 'Just now'}`;
+          copy.append(name, lastActive);
+          row.append(dot, copy);
+          presenceList.append(row);
+        });
+      }
+      presenceStatus.textContent = 'Updated just now · Active means within 5 minutes';
+    };
+    const refreshPresence = async () => {
+      try {
+        const response = await fetch('/admin/api/presence', { credentials: 'same-origin', cache: 'no-store' });
+        if (!response.ok) throw new Error(`Presence refresh failed (${response.status}).`);
+        renderPresence(await response.json());
+      } catch {
+        presenceStatus.textContent = 'Unable to refresh user activity.';
+      }
+    };
+    window.setInterval(refreshPresence, 60000);
+  }
   document.querySelectorAll('[data-select-all]').forEach((master) => master.addEventListener('change', () => {
     const table = master.closest('table');
     table?.querySelectorAll('tbody .row-select').forEach((checkbox) => { checkbox.checked = master.checked; });
