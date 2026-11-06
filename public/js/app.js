@@ -1,6 +1,52 @@
 (() => {
   const tg = window.Telegram?.WebApp;
   let currentUrl = location.href;
+  const analyticsSessionId = [...crypto.getRandomValues(new Uint8Array(16))]
+    .map((value) => value.toString(16).padStart(2, '0')).join('');
+  let analyticsPath = null;
+  let analyticsSegmentStartedAt = null;
+  let analyticsOpened = false;
+
+  function sendAnalyticsEvent(type, path, durationSeconds = 0) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const pathname = new URL(path, location.origin).pathname;
+    fetch('/api/analytics/event', {
+      method: 'POST',
+      credentials: 'same-origin',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ sessionId: analyticsSessionId, type, path: pathname, durationSeconds })
+    }).then((response) => {
+      if (!response.ok) console.error(`Analytics event failed (${response.status}).`);
+    }).catch((error) => console.error('Unable to record analytics event:', error));
+  }
+
+  function flushAnalyticsPage(endPage = false) {
+    if (analyticsPath && analyticsSegmentStartedAt !== null) {
+      const durationSeconds = Math.floor((Date.now() - analyticsSegmentStartedAt) / 1000);
+      if (durationSeconds > 0) sendAnalyticsEvent('page_time', analyticsPath, Math.min(3600, durationSeconds));
+    }
+    analyticsSegmentStartedAt = null;
+    if (endPage) analyticsPath = null;
+  }
+
+  function startAnalyticsPage(path) {
+    if (!document.querySelector('[data-user-balance]')) return;
+    const normalizedPath = new URL(path, location.origin).pathname;
+    if (analyticsPath !== normalizedPath) {
+      flushAnalyticsPage(true);
+      analyticsPath = normalizedPath;
+      sendAnalyticsEvent('page_view', analyticsPath);
+    }
+    if (!analyticsOpened) {
+      analyticsOpened = true;
+      sendAnalyticsEvent('app_open', analyticsPath);
+    }
+    if (document.visibilityState === 'visible') analyticsSegmentStartedAt = Date.now();
+    if (!window.__linkHubAnalyticsTimer) {
+      window.__linkHubAnalyticsTimer = setInterval(() => flushAnalyticsPage(), 30000);
+    }
+  }
 
   function initializePage() {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -49,6 +95,7 @@
     }
   }
 
+  startAnalyticsPage(document.body.dataset.page || location.pathname);
   window.__linkHubPresenceHeartbeat = async () => {
     if (!document.querySelector('[data-user-balance]') || document.visibilityState === 'hidden') return;
     try {
@@ -66,8 +113,14 @@
   if (!window.__linkHubPresenceVisibilityBound) {
     window.__linkHubPresenceVisibilityBound = true;
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') window.__linkHubPresenceHeartbeat?.();
+      if (document.visibilityState === 'visible') {
+        window.__linkHubPresenceHeartbeat?.();
+        if (analyticsPath) analyticsSegmentStartedAt = Date.now();
+      } else {
+        flushAnalyticsPage();
+      }
     });
+    window.addEventListener('pagehide', () => flushAnalyticsPage(true));
   }
   if (document.querySelector('[data-user-balance]')) {
     window.__linkHubPresenceHeartbeat();
@@ -579,6 +632,7 @@
       if (!nextShell || !currentShell) {
         throw new Error('This page is not available in the LinkHub app.');
       }
+      flushAnalyticsPage(true);
       currentShell.innerHTML = nextShell.innerHTML;
       document.title = page.title;
       document.body.dataset.page = page.body.dataset.page || target.pathname;

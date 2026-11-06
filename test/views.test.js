@@ -123,6 +123,68 @@ test('admin dashboard shows active user count and recent last-active times', asy
   assert.match(rendered, /Recent user activity/);
 });
 
+test('admin analytics report renders key usage and page metrics', async () => {
+  const now = new Date();
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'admin/analytics.ejs'), {
+    title: 'Analytics',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/admin/analytics',
+    adminUsername: 'admin',
+    formatDuration: (seconds) => `${seconds}s`,
+    analytics: {
+      days: 7,
+      from: new Date('2026-11-01T00:00:00Z'),
+      now,
+      metrics: { appOpens: 10, visitors: 4, pageViews: 35, averageSessionSeconds: 120, sessions: 8, durationSeconds: 960 },
+      pages: [{ _id: '/', pageViews: 10, durationSeconds: 300, averageSeconds: 30 }],
+      daily: [{ date: now, label: '11/7', appOpens: 2, pageViews: 5 }],
+      topContents: [{ _id: 'bbbbbbbbbbbbbbbbbbbbbbbb', pageViews: 4, durationSeconds: 180, content: { title: 'Trending link' } }],
+      visitors: [{
+        _id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+        appOpens: 3,
+        pageViews: 9,
+        durationSeconds: 600,
+        lastActiveAt: now,
+        user: { firstName: 'Test', lastName: 'User', username: 'test_user' }
+      }],
+      visitorPages: [{
+        _id: { userId: 'aaaaaaaaaaaaaaaaaaaaaaaa', path: '/content/:id', contentId: 'bbbbbbbbbbbbbbbbbbbbbbbb' },
+        path: '/content/:id',
+        pageViews: 2,
+        durationSeconds: 90,
+        lastActiveAt: now,
+        content: { title: 'Trending link' },
+        user: { firstName: 'Test', lastName: 'User', username: 'test_user' }
+      }]
+    }
+  });
+  assert.match(rendered, /Analytics/);
+  assert.match(rendered, /App opens/);
+  assert.match(rendered, /Unique visitors/);
+  assert.match(rendered, /Most visited pages/);
+  assert.match(rendered, /Visitor engagement/);
+  assert.match(rendered, /Top content/);
+  assert.match(rendered, /User page activity/);
+  assert.match(rendered, /Trending link/);
+  assert.match(rendered, /test_user/);
+  assert.match(rendered, /retained for 180 days/);
+});
+
+test('privacy page explains first-party usage analytics and retention', async () => {
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'user/privacy.ejs'), {
+    title: 'Privacy & analytics',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/privacy',
+    user: { firstName: 'Test', username: 'test', photoUrl: '', balance: 0 }
+  });
+  assert.match(rendered, /time spent on each page/);
+  assert.match(rendered, /up to 180 days/);
+  assert.match(rendered, /third-party analytics services/);
+  assert.match(rendered, /Privacy details/);
+});
+
 test('content page renders five per-content tasks and an initially locked video link', async () => {
   const taskSlots = Array.from({ length: 5 }, (_, slot) => ({
     slot,

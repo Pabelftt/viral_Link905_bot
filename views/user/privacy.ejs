@@ -1,0 +1,14 @@
+<%- include('../partials/user-head', { title, csrfToken }) %>
+<%- include('../partials/user-header', { user }) %>
+<header class="page-heading"><div><p class="eyebrow">YOUR DATA</p><h1>Privacy & analytics</h1><p class="muted">How LinkHub uses first-party app analytics.</p></div><span class="heading-art"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span></header>
+<section class="card privacy-card">
+  <h2>What is measured</h2>
+  <p>To understand how the app is used, LinkHub records app opens, page views, time spent on each page while the app is visible, and the content pages visited.</p>
+  <h2>How it is used</h2>
+  <p>These reports are available only to LinkHub administrators and help improve the app. Usage is associated with your LinkHub account so administrators can review app opens and page activity.</p>
+  <h2>Storage and sharing</h2>
+  <p>Analytics are stored in LinkHub's database for up to 180 days and then automatically removed. LinkHub does not send this analytics data to advertising or third-party analytics services, and does not store IP addresses, device fingerprints, or full URLs for analytics.</p>
+  <p class="muted small">App use continues normally; no analytics choices or rewards depend on this data.</p>
+</section>
+<%- include('../partials/user-nav') %>
+<%- include('../partials/user-foot') %>

@@ -19,6 +19,8 @@ const { createBroadcast } = require('../services/broadcastService');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
 const { CONTENT_TASK_COUNT, DEFAULT_CONTENT_TASK_LINK } = require('../services/contentTasks');
 const { DEFAULT_VIDEO_REWARD_LINK } = require('../services/dailyVideoReward');
+const { ANALYTICS_PERIODS, formatDuration, loadAnalytics } = require('../services/analytics');
+const AnalyticsDaily = require('../models/AnalyticsDaily');
 
 const router = express.Router();
 const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
@@ -165,6 +167,19 @@ router.get('/admin/api/presence', asyncRoute(async (req, res) => {
     activeUsers: presence.activeUsers,
     serverNow: presence.serverNow,
     users: presence.users.map((user) => ({ ...user, lastActiveAt: user.lastActiveAt.toISOString() }))
+  });
+}));
+
+router.get('/admin/analytics', [
+  query('days').optional().isInt().toInt().custom((value) => ANALYTICS_PERIODS.includes(value))
+], validate, asyncRoute(async (req, res) => {
+  const days = Number(req.query.days || 30);
+  const analytics = await loadAnalytics(AnalyticsDaily, User, Content, days);
+  res.render('admin/analytics', {
+    title: 'Analytics',
+    analytics,
+    formatDuration,
+    csrfToken: req.session.csrfToken
   });
 }));
 

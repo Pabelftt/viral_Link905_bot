@@ -54,6 +54,7 @@ npm run seed
 - Set up to five per-content task destinations from **Content task links**. Blank fields use the configured default link. Users can start and claim each task, and the task count is saved per user and content.
 - Configure multiple rotating video reward destinations from **Video reward links**. Users can claim ৳20 after the 60-second countdown; an empty list uses the default destination.
 - The user Mini App uses client-side navigation for internal pages, so opening a content card or switching user sections does not reload the document.
+- First-party analytics are available at **Admin → Analytics**: app opens, unique visitors, page views, session and page time, daily trends, top content, and per-user page engagement. The Mini App sends page events and visible-time updates; analytics are retained for 180 days. Content URLs are normalized to page paths; content references are stored internally for reporting. Analytics do not store IP addresses, device fingerprints, or query strings. Users can review the collection and retention details at `/privacy`.
 - Content unlocks remain available for one hour, after which all five tasks must be completed again. The home feed initially shows 20 newest links and loads more as the user scrolls.
 - Each new content unlock credits ৳50 atomically. Use the **Leaderboard** tab to see lifetime top income or referral rankings.
 - Withdrawals require 10 referrals, 15 completed tasks, and 20 distinct content unlocks. The server enforces all three thresholds.

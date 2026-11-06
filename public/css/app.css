@@ -201,6 +201,11 @@ label { display: grid; gap: 6px; color: var(--text); font-size: 12px; font-weigh
 input, select, textarea { min-height: 42px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 11px; color: var(--text); background: var(--surface); }
 textarea { resize: vertical; }
 .form-message { margin: 0; font-size: 12px; }
+.analytics-disclosure { margin: 14px 0 0; color: var(--muted); font-size: 10px; text-align: center; }
+.analytics-disclosure a { color: var(--primary); font-weight: 700; }
+.privacy-card { display: grid; gap: 7px; padding: 18px; }
+.privacy-card h2 { margin: 8px 0 0; font-size: 15px; }
+.privacy-card p { margin: 0; font-size: 13px; }
 .back-link { display: inline-flex; align-items: center; gap: 7px; margin: -10px 0 15px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .content-detail { display: grid; gap: 18px; }
 .detail-cover { height: 220px; overflow: hidden; border-radius: 22px; background: var(--surface-alt); }

@@ -14,6 +14,7 @@ const ActivityLog = require('../models/ActivityLog');
 const DailyVideoUsage = require('../models/DailyVideoUsage');
 const Setting = require('../models/Setting');
 const VideoRewardProgress = require('../models/VideoRewardProgress');
+const AnalyticsDaily = require('../models/AnalyticsDaily');
 const env = require('../config/env');
 const { requireUser } = require('../middleware/auth');
 const { requireCsrf } = require('../middleware/csrf');
@@ -28,6 +29,7 @@ const {
 const { VIDEO_REWARD_AMOUNT, VIDEO_WATCH_SECONDS, getVideoRewardLinks } = require('../services/dailyVideoReward');
 const { loadWithdrawalStatus } = require('../services/withdrawalRequirements');
 const { loadTopIncome, loadTopReferrals } = require('../services/leaderboard');
+const { ANALYTICS_EVENT_TYPES, getAnalyticsPage } = require('../services/analytics');
 
 const router = express.Router();
 const CONTENT_PAGE_SIZE = 20;
@@ -361,6 +363,39 @@ router.post('/api/user/presence', requireUser, requireCsrf, asyncRoute(async (re
   res.json({ ok: true });
 }));
 
+router.post('/api/analytics/event', requireUser, requireCsrf, [
+  body('sessionId').isString().matches(/^[a-f\d]{32}$/i),
+  body('type').isIn(ANALYTICS_EVENT_TYPES),
+  body('path').isString().custom((value, { req }) => {
+    const page = getAnalyticsPage(value);
+    if (!page) throw new Error('Unsupported analytics page.');
+    req.body.path = page.path;
+    req.body.contentId = page.contentId;
+    return true;
+  }),
+  body('durationSeconds').optional().isInt({ min: 0, max: 3600 }).toInt()
+], validationError, asyncRoute(async (req, res) => {
+  const user = await User.findById(req.session.userId).select('isActive isSuspended').lean();
+  if (!user || !user.isActive || user.isSuspended) return res.status(403).json({ error: 'This account is unavailable.' });
+  const now = new Date();
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const increment = req.body.type === 'app_open' ? { appOpens: 1 }
+    : req.body.type === 'page_view' ? { pageViews: 1 }
+      : { durationSeconds: Number(req.body.durationSeconds || 0) };
+  await AnalyticsDaily.updateOne({
+    dayStart,
+    userId: req.session.userId,
+    sessionId: req.body.sessionId,
+    path: req.body.path,
+    contentId: req.body.contentId
+  }, {
+    $inc: increment,
+    $set: { lastActiveAt: now },
+    $setOnInsert: { contentId: req.body.contentId }
+  }, { upsert: true, runValidators: true });
+  res.json({ ok: true });
+}));
+
 router.get('/api/contents', requireUser, [
   query('q').optional().isString().isLength({ max: 100 }),
   query('sort').optional().isIn(['latest', 'views', 'trending']),
@@ -627,6 +662,11 @@ router.get('/profile', requireUser, asyncRoute(async (req, res) => {
     loadWithdrawalStatus(user._id, user.referralCount)
   ]);
   res.render('user/profile', { title: 'Your Profile', user, withdrawals, minWithdrawAmount: env.minWithdrawAmount, requirements });
+}));
+
+router.get('/privacy', requireUser, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  res.render('user/privacy', { title: 'Privacy & analytics', user });
 }));
 
 router.get('/content/:id/watch', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
