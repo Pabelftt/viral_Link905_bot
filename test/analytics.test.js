@@ -31,8 +31,10 @@ test('analytics report aggregates usage, page time, sessions, users, and content
     appOpens: 2,
     pageViews: 5
   }];
+  const aggregations = [];
   const AnalyticsDaily = {
     aggregate(pipeline) {
+      aggregations.push(pipeline);
       const group = pipeline.find((stage) => stage.$group)?.$group;
       if (pipeline.some((stage) => stage.$count)) {
         return Promise.resolve([{ count: group._id.sessionId ? 3 : 2 }]);
@@ -64,4 +66,14 @@ test('analytics report aggregates usage, page time, sessions, users, and content
   assert.equal(report.visitors[0].user.username, 'test');
   assert.equal(report.visitorPages[0].content.title, 'Trending link');
   assert.equal(report.topContents[0].content.title, 'Trending link');
+  const visitorSort = aggregations.find((pipeline) => pipeline.some((stage) => stage.$group?._id === '$userId')
+    && pipeline.some((stage) => stage.$sort));
+  assert.deepEqual(visitorSort.find((stage) => stage.$sort)?.$sort, {
+    lastActiveAt: -1, durationSeconds: -1, appOpens: -1
+  });
+  const visitorPageSort = aggregations.find((pipeline) => pipeline.some((stage) => stage.$group?._id?.userId)
+    && pipeline.some((stage) => stage.$sort));
+  assert.deepEqual(visitorPageSort.find((stage) => stage.$sort)?.$sort, {
+    lastActiveAt: -1, durationSeconds: -1, pageViews: -1
+  });
 });

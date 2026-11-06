@@ -163,7 +163,8 @@ test('admin analytics report renders key usage and page metrics', async () => {
   assert.match(rendered, /App opens/);
   assert.match(rendered, /Unique visitors/);
   assert.match(rendered, /Most visited pages/);
-  assert.match(rendered, /Visitor engagement/);
+  assert.match(rendered, /Recent visitor activity/);
+  assert.match(rendered, /Most recently active first/);
   assert.match(rendered, /Top content/);
   assert.match(rendered, /User page activity/);
   assert.match(rendered, /Trending link/);

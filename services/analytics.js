@@ -81,7 +81,7 @@ async function loadAnalytics(AnalyticsDaily, User, Content, days) {
         durationSeconds: { $sum: '$durationSeconds' },
         lastActiveAt: { $max: '$lastActiveAt' }
       } },
-      { $sort: { durationSeconds: -1, appOpens: -1 } },
+      { $sort: { lastActiveAt: -1, durationSeconds: -1, appOpens: -1 } },
       { $limit: 50 }
     ]),
     AnalyticsDaily.aggregate([
@@ -92,7 +92,7 @@ async function loadAnalytics(AnalyticsDaily, User, Content, days) {
         durationSeconds: { $sum: '$durationSeconds' },
         lastActiveAt: { $max: '$lastActiveAt' }
       } },
-      { $sort: { durationSeconds: -1, pageViews: -1 } },
+      { $sort: { lastActiveAt: -1, durationSeconds: -1, pageViews: -1 } },
       { $limit: 100 }
     ]),
     AnalyticsDaily.aggregate([
