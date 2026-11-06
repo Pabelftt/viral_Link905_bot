@@ -25,13 +25,14 @@ test('home page signs in automatically without a Telegram login button', async (
   const rendered = await ejs.renderFile(path.join(viewRoot, 'user/home.ejs'), {
     title: 'Home',
     csrfToken: 'test-csrf-token',
-    appName: 'Arohi Mim Viral Link',
+    appName: 'LinkHub',
     currentPath: '/',
     user: null,
     contents: [],
     banner: '',
     telegramWebAppUrl: 'https://example.test'
   });
+  assert.match(rendered, /Welcome to LinkHub/);
   assert.match(rendered, /data-auth-status/);
   assert.doesNotMatch(rendered, /Continue with Telegram|data-telegram-login/);
 });
@@ -40,7 +41,7 @@ test('complex admin management templates render representative records', async (
   const common = {
     title: 'Test',
     csrfToken: 'test-csrf-token',
-    appName: 'Arohi Mim Viral Link',
+    appName: 'LinkHub',
     currentPath: '/admin/tasks',
     adminUsername: 'admin',
     items: [],

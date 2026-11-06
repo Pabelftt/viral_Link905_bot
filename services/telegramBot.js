@@ -9,7 +9,7 @@ if (bot) {
     const startParam = ctx.startPayload || '';
     const webAppUrl = new URL(env.webAppUrl);
     if (/^ref_\d{1,20}$/.test(startParam)) webAppUrl.searchParams.set('startapp', startParam);
-    await ctx.reply('Open Arohi Mim Viral Link to explore content and rewards.', Markup.inlineKeyboard([
+    await ctx.reply('Open LinkHub to explore content and rewards.', Markup.inlineKeyboard([
       Markup.button.webApp('Open Mini App', webAppUrl.toString())
     ]));
   });

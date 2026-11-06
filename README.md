@@ -1,4 +1,4 @@
-# Arohi Mim Viral Link
+# LinkHub
 
 A server-rendered Telegram Mini App for viral content, tasks, referrals, rewards, withdrawals and admin-managed broadcasts. The app uses Express, EJS, MongoDB/Mongoose and Telegraf; it does not use a client-side framework.
 
@@ -43,12 +43,12 @@ npm run dev
 npm run seed
 ```
 
-`npm start` starts the production server. The seed command idempotently inserts twenty generic starter content records using `seedKey`; the referenced prompt did not include its promised JSON array, so these are clearly named placeholders, not user-provided content. Replace or extend `starterContents` in `scripts/seedContents.js` with the intended records. Existing seeded rows are preserved by `$setOnInsert`.
+`npm start` starts the production server. `npm run seed` inserts or updates the twenty LinkHub content records in `scripts/seedContents.js`, keyed by `seedKey`, and can be safely rerun. Seeded records include their title, image/video URL, date, and view count.
 
 ## Admin
 
 - Open `/admin/login`.
-- Admin access uses the configured username and bcrypt password hash, an HTTP-only session cookie, Mongo-backed session storage, and rate-limited login.
+- Admin access uses the configured username and password, an HTTP-only session cookie, Mongo-backed session storage, and rate-limited login.
 - Admin state-changing forms require a session CSRF token. User sessions are created only after Telegram WebApp verification.
 - Manage links, task definitions, user balances and suspension, task reviews, withdrawals, broadcasts and the home banner from the dashboard.
 
@@ -72,4 +72,4 @@ See `.env.example` for supported environment variables. `MIN_WITHDRAW_AMOUNT`, `
 
 ## Notes
 
-The shared brief referenced screenshots and a 20-item JSON array, but neither was included with the attached text. The implementation therefore follows the written design description and uses placeholder seed entries until the source data is supplied.
+The starter content entries use the URLs and sample video IDs provided for the project. Replace sample video URLs with real content links before publishing them to users.

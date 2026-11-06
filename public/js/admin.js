@@ -53,12 +53,12 @@
   }
 
   const templates = {
-    welcome: ['Welcome to Arohi Mim!', 'Explore viral content, complete tasks and earn rewards. Tap below to get started.', 'Open Mini App', '/'],
+    welcome: ['Welcome to LinkHub!', 'Explore viral content, complete tasks and earn rewards. Tap below to get started.', 'Open Mini App', '/'],
     viral: ['New viral link is here!', 'A new trending link just arrived. Open the Mini App to check it out.', 'View viral links', '/'],
     task: ['New earning task', 'A new task is available. Complete it to earn a reward.', 'Explore tasks', '/earn'],
     withdrawal: ['Withdrawal update', 'There is an update about your withdrawal request. Open your profile for details.', 'View profile', '/profile'],
     referral: ['Referral bonus unlocked!', 'Your referral activity earned a new bonus. Open the app to claim it.', 'View referrals', '/refer'],
-    offer: ['A special offer for you', 'Check out this limited-time offer in Arohi Mim Viral Link.', 'Open Mini App', '/'],
+    offer: ['A special offer for you', 'Check out this limited-time offer in LinkHub.', 'Open Mini App', '/'],
     maintenance: ['Scheduled maintenance', 'Some features may be unavailable briefly while we make improvements.', '', '']
   };
   const templateSelect = document.querySelector('[data-broadcast-template]');

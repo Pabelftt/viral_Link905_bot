@@ -361,7 +361,7 @@ router.get('/', asyncRoute(async (req, res) => {
     require('../models/Setting').findOne({ key: 'promoBanner' }).lean()
   ]);
   const contentCards = user ? await addContentProgress(contents, user._id) : contents;
-  res.render('user/home', { title: 'Arohi Mim Viral Link', user, contents: contentCards, banner: banner?.value || '' });
+  res.render('user/home', { title: 'LinkHub', user, contents: contentCards, banner: banner?.value || '' });
 }));
 
 router.get('/earn', requireUser, asyncRoute(async (req, res) => res.render('user/earn', { title: 'Earn & Tasks', user: await loadCurrentUser(req), dailyLimit: env.dailyVideoLimit })));

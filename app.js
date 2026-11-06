@@ -59,7 +59,7 @@ app.use(session({
 }));
 app.use(attachCsrfToken);
 app.use((req, res, next) => {
-  res.locals.appName = 'Arohi Mim Viral Link';
+  res.locals.appName = 'LinkHub';
   res.locals.telegramWebAppUrl = env.webAppUrl;
   res.locals.currentPath = req.path;
   next();
@@ -74,7 +74,7 @@ app.use(errorHandler);
 async function start() {
   await connectDatabase();
   const server = app.listen(env.port, async () => {
-    console.info(`Arohi Mim Viral Link listening on port ${env.port}`);
+    console.info(`LinkHub listening on port ${env.port}`);
     try {
       await launchBot(app);
     } catch (error) {
