@@ -6,6 +6,7 @@
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   window.__linkHubContentObserver?.disconnect();
   clearInterval(window.__linkHubRewardTimer);
+  clearInterval(window.__linkHubUnlockCountdown);
   clearTimeout(window.__linkHubUnlockTimer);
   let toastTimer;
   function isDarkColor(color) {
@@ -288,6 +289,19 @@
   function scheduleContentUnlockExpiry(detail) {
     const expiresAt = Number(detail.dataset.unlockExpiresAt || 0);
     const remaining = expiresAt - Date.now();
+    const countdown = detail.querySelector('[data-unlock-countdown]');
+    if (countdown && remaining > 0) {
+      const updateCountdown = () => {
+        const seconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+        const hours = String(Math.floor(seconds / 3600)).padStart(2, '0');
+        const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+        const remainder = String(seconds % 60).padStart(2, '0');
+        countdown.textContent = `${hours}:${minutes}:${remainder}`;
+        if (seconds === 0) clearInterval(window.__linkHubUnlockCountdown);
+      };
+      updateCountdown();
+      window.__linkHubUnlockCountdown = setInterval(updateCountdown, 1000);
+    }
     if (remaining > 0) {
       window.__linkHubUnlockTimer = setTimeout(() => {
         window.linkHubNavigate(location.href, { replace: true });

@@ -124,6 +124,7 @@ test('content page renders five per-content tasks and an initially locked video 
   assert.match(rendered, /button-success/);
   assert.match(rendered, /Watch \/ Download Now/);
   assert.match(rendered, /data-unlocked-content hidden/);
+  assert.match(rendered, /data-unlock-countdown/);
   assert.doesNotMatch(rendered, /https:\/\/example\.test\/video/);
 
   const unlocked = await ejs.renderFile(path.join(viewRoot, 'user/content.ejs'), {
@@ -147,7 +148,8 @@ test('content page renders five per-content tasks and an initially locked video 
     unlockExpiresAt: new Date(Date.now() + 60 * 60 * 1000)
   });
   assert.match(unlocked, /href="\/content\/aaaaaaaaaaaaaaaaaaaaaaaa\/watch"/);
-  assert.match(unlocked, /Available for one hour/);
+  assert.match(unlocked, /class="button button-primary watch-video-button" data-watch-video target="_blank"/);
+  assert.match(unlocked, /Time remaining: <strong data-unlock-countdown>01:00:00<\/strong>/);
   assert.doesNotMatch(unlocked, /https:\/\/example\.test\/video/);
 });
 
