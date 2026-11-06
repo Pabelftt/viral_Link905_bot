@@ -12,14 +12,19 @@ const Referral = require('../models/Referral');
 const MilestoneClaim = require('../models/MilestoneClaim');
 const ActivityLog = require('../models/ActivityLog');
 const DailyVideoUsage = require('../models/DailyVideoUsage');
+const Setting = require('../models/Setting');
+const VideoRewardProgress = require('../models/VideoRewardProgress');
 const env = require('../config/env');
 const { requireUser } = require('../middleware/auth');
 const { requireCsrf } = require('../middleware/csrf');
 const { verifyTelegramInitData } = require('../services/telegramAuth');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
-const { CONTENT_TASK_COUNT, getContentTaskLinks } = require('../services/contentTasks');
+const { CONTENT_TASK_COUNT, CONTENT_UNLOCK_DURATION_MS, getContentTaskLinks } = require('../services/contentTasks');
+const { VIDEO_REWARD_AMOUNT, VIDEO_WATCH_SECONDS, getVideoRewardLinks } = require('../services/dailyVideoReward');
+const { loadWithdrawalStatus } = require('../services/withdrawalRequirements');
 
 const router = express.Router();
+const CONTENT_PAGE_SIZE = 20;
 const verificationLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 12,
@@ -58,16 +63,54 @@ async function addContentProgress(contents, userId) {
   const records = await ContentTaskProgress.find({
     userId,
     contentId: { $in: contents.map((content) => content._id) }
-  }).select('contentId completedSlots').lean();
+  }).select('contentId completedSlots unlockExpiresAt').lean();
+  const legacyUnlocks = records.filter((record) => record.completedSlots?.length === CONTENT_TASK_COUNT && !record.unlockExpiresAt);
+  if (legacyUnlocks.length) {
+    const now = new Date();
+    await ContentTaskProgress.bulkWrite(legacyUnlocks.map((record) => {
+      record.unlockExpiresAt = new Date(now.getTime() + CONTENT_UNLOCK_DURATION_MS);
+      record.unlockedAt = now;
+      record.unlockCount = 1;
+      return {
+        updateOne: {
+          filter: { _id: record._id, unlockExpiresAt: null, completedSlots: { $size: CONTENT_TASK_COUNT } },
+          update: { $set: { unlockedAt: now, unlockExpiresAt: record.unlockExpiresAt, unlockCount: 1 } }
+        }
+      };
+    }));
+  }
   return contents.map((content) => {
     const progress = records.find((record) => String(record.contentId) === String(content._id));
-    const completed = progress?.completedSlots.length || 0;
+    const unlocked = progress?.unlockExpiresAt > new Date();
+    const completedCount = progress?.completedSlots?.length || 0;
+    const completed = unlocked ? completedCount : progress?.unlockExpiresAt ? 0 : completedCount;
     return {
       ...content,
-      taskProgress: { completed, total: CONTENT_TASK_COUNT },
-      isUnlocked: completed >= CONTENT_TASK_COUNT
+      taskProgress: { completed, total: CONTENT_TASK_COUNT, unlockExpiresAt: unlocked ? progress.unlockExpiresAt : null },
+      isUnlocked: Boolean(unlocked && completed >= CONTENT_TASK_COUNT)
     };
   });
+}
+
+async function loadCurrentContentProgress(userId, contentId) {
+  let progress = await ContentTaskProgress.findOne({ userId, contentId }).select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean();
+  if (progress?.completedSlots?.length === CONTENT_TASK_COUNT && !progress.unlockExpiresAt) {
+    const unlockedAt = new Date();
+    progress = await ContentTaskProgress.findOneAndUpdate(
+      { _id: progress._id, completedSlots: { $size: CONTENT_TASK_COUNT }, unlockExpiresAt: null },
+      { $set: { unlockedAt, unlockExpiresAt: new Date(unlockedAt.getTime() + CONTENT_UNLOCK_DURATION_MS), unlockCount: 1 } },
+      { new: true }
+    ).select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean() || progress;
+  }
+  if (progress?.unlockExpiresAt && progress.unlockExpiresAt <= new Date()) {
+    progress = await ContentTaskProgress.findOneAndUpdate(
+      { _id: progress._id, unlockExpiresAt: { $lte: new Date() } },
+      { $set: { startedSlots: [], completedSlots: [], unlockedAt: null, unlockExpiresAt: null } },
+      { new: true }
+    ).select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean() || await ContentTaskProgress.findById(progress._id)
+      .select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean();
+  }
+  return progress;
 }
 
 router.post('/api/telegram/auth', asyncRoute(async (req, res) => {
@@ -129,6 +172,7 @@ router.post('/api/contents/:id/tasks/:slot/start', requireUser, requireCsrf, [
   const user = await loadCurrentUser(req);
   const content = await Content.findOne({ _id: req.params.id, isActive: true }).select('taskLinks');
   if (!content) return res.status(404).json({ error: 'Content not found.' });
+  await loadCurrentContentProgress(user._id, content._id);
 
   const slot = req.params.slot;
   let progress;
@@ -157,7 +201,7 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
   param('slot').isInt({ min: 0, max: CONTENT_TASK_COUNT - 1 }).toInt()
 ], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
-  const content = await Content.findOne({ _id: req.params.id, isActive: true }).select('videoUrl');
+  const content = await Content.findOne({ _id: req.params.id, isActive: true }).select('_id');
   if (!content) return res.status(404).json({ error: 'Content not found.' });
 
   const slot = req.params.slot;
@@ -181,12 +225,91 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
     actorId: user._id, actorType: 'user', action: 'content_task_claimed',
     targetType: 'content', targetId: String(content._id), details: { slot: slot + 1 }
   });
+  let unlockExpiresAt = null;
+  if (progress.completedSlots.length === CONTENT_TASK_COUNT) {
+    const unlockedAt = new Date();
+    unlockExpiresAt = new Date(unlockedAt.getTime() + CONTENT_UNLOCK_DURATION_MS);
+    const unlocked = await ContentTaskProgress.findOneAndUpdate(
+      { _id: progress._id, completedSlots: { $size: CONTENT_TASK_COUNT }, unlockExpiresAt: null },
+      { $set: { unlockedAt, unlockExpiresAt, unlockCount: 1 } },
+      { new: true }
+    );
+    if (!unlocked) throw Object.assign(new Error('Unable to unlock this content. Please refresh and try again.'), { status: 409 });
+  }
   res.json({
     ok: true,
     completed: progress.completedSlots.length,
     total: CONTENT_TASK_COUNT,
-    ...(progress.completedSlots.length === CONTENT_TASK_COUNT ? { videoUrl: content.videoUrl } : {})
+    ...(unlockExpiresAt ? { watchUrl: `/content/${content._id}/watch`, unlockExpiresAt } : {})
   });
+}));
+
+router.get('/api/video-reward/status', requireUser, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const progress = await VideoRewardProgress.findOne({ userId: user._id }).select('startedAt totalClaims').lean();
+  const claimAvailableAt = progress?.startedAt ? new Date(progress.startedAt.getTime() + VIDEO_WATCH_SECONDS * 1000) : null;
+  const remainingSeconds = claimAvailableAt ? Math.max(0, Math.ceil((claimAvailableAt - Date.now()) / 1000)) : 0;
+  res.json({ active: Boolean(progress?.startedAt), remainingSeconds, reward: VIDEO_REWARD_AMOUNT, totalClaims: progress?.totalClaims || 0 });
+}));
+
+router.post('/api/video-reward/start', requireUser, requireCsrf, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const setting = await Setting.findOne({ key: 'dailyVideoLinks' }).select('value').lean();
+  const links = getVideoRewardLinks(setting?.value);
+  const now = new Date();
+  let progress;
+  try {
+    progress = await VideoRewardProgress.findOneAndUpdate(
+      { userId: user._id, $or: [{ startedAt: null }, { startedAt: { $exists: false } }] },
+      { $set: { startedAt: now }, $setOnInsert: { userId: user._id } },
+      { upsert: true, new: true, runValidators: true }
+    );
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    return res.status(409).json({ error: 'Your video reward is already in progress.' });
+  }
+  const linkIndex = progress.linkIndex % links.length;
+  await ActivityLog.create({
+    actorId: user._id, actorType: 'user', action: 'video_reward_started',
+    targetType: 'videoReward', targetId: String(linkIndex + 1), details: { linkIndex }
+  });
+  res.status(201).json({ ok: true, taskLink: links[linkIndex], remainingSeconds: VIDEO_WATCH_SECONDS, reward: VIDEO_REWARD_AMOUNT });
+}));
+
+router.post('/api/video-reward/claim', requireUser, requireCsrf, verificationLimiter, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const existing = await VideoRewardProgress.findOne({ userId: user._id }).select('startedAt').lean();
+  if (!existing?.startedAt) return res.status(400).json({ error: 'Start watching before claiming this reward.' });
+  const claimAt = new Date(existing.startedAt.getTime() + VIDEO_WATCH_SECONDS * 1000);
+  if (claimAt > new Date()) {
+    return res.status(400).json({
+      error: 'Please finish watching the full one-minute video before claiming.',
+      remainingSeconds: Math.ceil((claimAt - Date.now()) / 1000)
+    });
+  }
+
+  const claimedAt = new Date();
+  const progress = await withMongoTransaction(async (session) => {
+    const claimed = await VideoRewardProgress.findOneAndUpdate(
+      { userId: user._id, startedAt: { $eq: existing.startedAt, $lte: claimedAt } },
+      { $set: { startedAt: null, lastClaimedAt: claimedAt }, $inc: { linkIndex: 1, totalClaims: 1 } },
+      { new: true, session }
+    );
+    if (!claimed) throw Object.assign(new Error('This reward was already claimed or restarted.'), { status: 409 });
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: user._id, isActive: true, isSuspended: false },
+      { $inc: { balance: VIDEO_REWARD_AMOUNT } },
+      { new: true, session }
+    ).select('balance').lean();
+    if (!updatedUser) throw Object.assign(new Error('Your account is unavailable.'), { status: 403 });
+    await ActivityLog.create([{
+      actorId: user._id, actorType: 'user', action: 'video_reward_claimed',
+      targetType: 'videoReward', targetId: String(claimed.totalClaims),
+      amount: VIDEO_REWARD_AMOUNT, details: { totalClaims: claimed.totalClaims }
+    }], { session });
+    return { totalClaims: claimed.totalClaims, balance: updatedUser.balance };
+  });
+  res.json({ ok: true, reward: VIDEO_REWARD_AMOUNT, totalClaims: progress.totalClaims, balance: progress.balance });
 }));
 
 router.get('/api/me', requireUser, asyncRoute(async (req, res) => {
@@ -204,11 +327,11 @@ router.get('/api/contents', requireUser, [
   if (req.query.q) filter.title = { $regex: req.query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
   const sort = req.query.sort === 'views' ? { totalViews: -1 } : req.query.sort === 'trending' ? { isTrending: -1, createdAt: -1 } : { createdAt: -1 };
   const [contents, total] = await Promise.all([
-    Content.find(filter).sort(sort).skip((page - 1) * 12).limit(12).lean(),
+    Content.find(filter).select('-videoUrl -taskLinks').sort(sort).skip((page - 1) * CONTENT_PAGE_SIZE).limit(CONTENT_PAGE_SIZE).lean(),
     Content.countDocuments(filter)
   ]);
   const user = await loadCurrentUser(req);
-  res.json({ contents: await addContentProgress(contents, user._id), page, hasMore: page * 12 < total });
+  res.json({ contents: await addContentProgress(contents, user._id), page, hasMore: page * CONTENT_PAGE_SIZE < total });
 }));
 
 router.get('/api/tasks', requireUser, asyncRoute(async (req, res) => {
@@ -366,13 +489,12 @@ router.post('/api/withdrawals', requireUser, requireCsrf, [
   body('amount').isFloat({ min: env.minWithdrawAmount, max: 10000000 }).toFloat()
 ], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
-  const [pending, completedTaskCount, unlockedCount] = await Promise.all([
+  const [pending, requirements] = await Promise.all([
     Withdrawal.exists({ userId: user._id, status: 'pending' }),
-    TaskCompletion.countDocuments({ userId: user._id, status: 'completed' }),
-    TaskCompletion.distinct('contentId', { userId: user._id, status: 'completed', contentId: { $ne: null } }).then((ids) => ids.length)
+    loadWithdrawalStatus(user._id, user.referralCount)
   ]);
   if (pending) return res.status(409).json({ error: 'You already have a pending withdrawal request.' });
-  if (user.referralCount < env.requiredReferrals || completedTaskCount < env.requiredTasks || unlockedCount < env.requiredUnlocks) {
+  if (!requirements.canWithdraw) {
     return res.status(400).json({ error: 'Complete the withdrawal requirements before requesting a payout.' });
   }
   const amount = Number(req.body.amount);
@@ -424,14 +546,16 @@ router.post('/api/referral/claim/:id', requireUser, requireCsrf, [param('id').is
 router.get('/', asyncRoute(async (req, res) => {
   const user = req.session.userId ? await User.findById(req.session.userId) : null;
   const [contents, banner] = await Promise.all([
-    Content.find({ isActive: true }).sort({ isTrending: -1, createdAt: -1 }).limit(12).lean(),
-    require('../models/Setting').findOne({ key: 'promoBanner' }).lean()
+    Content.find({ isActive: true }).select('-videoUrl -taskLinks').sort({ createdAt: -1 }).limit(CONTENT_PAGE_SIZE + 1).lean(),
+    Setting.findOne({ key: 'promoBanner' }).lean()
   ]);
-  const contentCards = user ? await addContentProgress(contents, user._id) : contents;
-  res.render('user/home', { title: 'LinkHub', user, contents: contentCards, banner: banner?.value || '' });
+  const hasMoreContents = contents.length > CONTENT_PAGE_SIZE;
+  const firstPage = contents.slice(0, CONTENT_PAGE_SIZE);
+  const contentCards = user ? await addContentProgress(firstPage, user._id) : firstPage;
+  res.render('user/home', { title: 'LinkHub', user, contents: contentCards, hasMoreContents, banner: banner?.value || '' });
 }));
 
-router.get('/earn', requireUser, asyncRoute(async (req, res) => res.render('user/earn', { title: 'Earn & Tasks', user: await loadCurrentUser(req), dailyLimit: env.dailyVideoLimit })));
+router.get('/earn', requireUser, asyncRoute(async (req, res) => res.render('user/earn', { title: 'Earn & Tasks', user: await loadCurrentUser(req) })));
 
 router.get('/refer', requireUser, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
@@ -445,19 +569,35 @@ router.get('/refer', requireUser, asyncRoute(async (req, res) => {
 
 router.get('/profile', requireUser, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
-  const [withdrawals, completedTasks, unlockedContents] = await Promise.all([
+  const [withdrawals, requirements] = await Promise.all([
     Withdrawal.find({ userId: user._id }).sort({ requestedAt: -1 }).limit(10).lean(),
-    TaskCompletion.countDocuments({ userId: user._id, status: 'completed' }),
-    TaskCompletion.distinct('contentId', { userId: user._id, status: 'completed', contentId: { $ne: null } }).then((ids) => ids.length)
+    loadWithdrawalStatus(user._id, user.referralCount)
   ]);
-  res.render('user/profile', { title: 'Your Profile', user, withdrawals, minWithdrawAmount: env.minWithdrawAmount, requirements: { referrals: env.requiredReferrals, tasks: env.requiredTasks, unlocks: env.requiredUnlocks, completedTasks, unlockedContents } });
+  res.render('user/profile', { title: 'Your Profile', user, withdrawals, minWithdrawAmount: env.minWithdrawAmount, requirements });
+}));
+
+router.get('/content/:id/watch', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const [content, progress] = await Promise.all([
+    Content.findOne({ _id: req.params.id, isActive: true }).select('videoUrl'),
+    ContentTaskProgress.findOne({
+      userId: user._id,
+      contentId: req.params.id,
+      completedSlots: { $size: CONTENT_TASK_COUNT },
+      unlockExpiresAt: { $gt: new Date() }
+    }).select('unlockExpiresAt').lean()
+  ]);
+  if (!content) return res.status(404).render('errors/404', { title: 'Content not found' });
+  if (!progress) return res.redirect(`/content/${req.params.id}`);
+  if (!content.videoUrl) return res.status(404).render('errors/404', { title: 'Video unavailable' });
+  return res.redirect(content.videoUrl);
 }));
 
 router.get('/content/:id', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
   const content = await Content.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $inc: { totalViews: 1 } }, { new: true }).lean();
   if (!content) return res.status(404).render('errors/404', { title: 'Content not found' });
-  const progress = await ContentTaskProgress.findOne({ userId: user._id, contentId: content._id }).select('startedSlots completedSlots').lean();
+  const progress = await loadCurrentContentProgress(user._id, content._id);
   const startedSlots = new Set(progress?.startedSlots || []);
   const completedSlots = new Set(progress?.completedSlots || []);
   const tasks = getContentTaskLinks(content).map((taskLink, slot) => ({
@@ -466,8 +606,9 @@ router.get('/content/:id', requireUser, [param('id').isMongoId()], validationErr
     started: startedSlots.has(slot),
     completed: completedSlots.has(slot)
   }));
-  const allDone = completedSlots.size === CONTENT_TASK_COUNT;
-  res.render('user/content', { title: content.title, user, content, tasks, allDone, completedTaskCount: completedSlots.size });
+  const allDone = completedSlots.size === CONTENT_TASK_COUNT && progress?.unlockExpiresAt > new Date();
+  const unlockExpiresAt = allDone ? progress.unlockExpiresAt : null;
+  res.render('user/content', { title: content.title, user, content, tasks, allDone, completedTaskCount: completedSlots.size, unlockExpiresAt });
 }));
 
 router.locals = { milestones };

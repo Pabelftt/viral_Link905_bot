@@ -44,9 +44,9 @@ module.exports = Object.freeze({
   botWebhookPath: process.env.BOT_WEBHOOK_PATH || '/telegram/webhook',
   minWithdrawAmount: positiveNumber('MIN_WITHDRAW_AMOUNT', 100),
   dailyVideoLimit: positiveNumber('DAILY_VIDEO_LIMIT', 50),
-  requiredReferrals: positiveNumber('WITHDRAW_REQUIRED_REFERRALS', 0),
-  requiredUnlocks: positiveNumber('WITHDRAW_REQUIRED_UNLOCKS', 0),
-  requiredTasks: positiveNumber('WITHDRAW_REQUIRED_TASKS', 0),
+  requiredReferrals: positiveNumber('WITHDRAW_REQUIRED_REFERRALS', 10),
+  requiredUnlocks: positiveNumber('WITHDRAW_REQUIRED_UNLOCKS', 20),
+  requiredTasks: positiveNumber('WITHDRAW_REQUIRED_TASKS', 15),
   taskCompletionDelaySeconds: positiveNumber('TASK_COMPLETION_DELAY_SECONDS', 15),
   isProduction: process.env.NODE_ENV === 'production'
 });

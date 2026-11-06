@@ -37,6 +37,32 @@ test('home page signs in automatically without a Telegram login button', async (
   assert.doesNotMatch(rendered, /Continue with Telegram|data-telegram-login/);
 });
 
+test('home page starts with twenty items and an infinite-scroll sentinel', async () => {
+  const contents = Array.from({ length: 20 }, (_, index) => ({
+    _id: String(index).padStart(24, 'a'),
+    title: `Video ${index + 1}`,
+    imageUrl: '',
+    date: new Date('2026-01-01T00:00:00Z'),
+    totalViews: 0,
+    taskProgress: { completed: 0, total: 5 },
+    isUnlocked: false
+  }));
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'user/home.ejs'), {
+    title: 'Home',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/',
+    user: { firstName: 'Test', username: 'test', photoUrl: '', balance: 0 },
+    contents,
+    hasMoreContents: true,
+    banner: '',
+    telegramWebAppUrl: 'https://example.test'
+  });
+  assert.equal((rendered.match(/class="content-card"/g) || []).length, 20);
+  assert.match(rendered, /id="content-scroll-sentinel"/);
+  assert.match(rendered, /data-has-more="true"/);
+});
+
 test('content page renders five per-content tasks and an initially locked video link', async () => {
   const taskSlots = Array.from({ length: 5 }, (_, slot) => ({
     slot,
@@ -87,9 +113,12 @@ test('content page renders five per-content tasks and an initially locked video 
     },
     tasks: taskSlots.map((task) => ({ ...task, started: true, completed: true })),
     allDone: true,
-    completedTaskCount: 5
+    completedTaskCount: 5,
+    unlockExpiresAt: new Date(Date.now() + 60 * 60 * 1000)
   });
-  assert.match(unlocked, /href="https:\/\/example\.test\/video"/);
+  assert.match(unlocked, /href="\/content\/aaaaaaaaaaaaaaaaaaaaaaaa\/watch"/);
+  assert.match(unlocked, /Available for one hour/);
+  assert.doesNotMatch(unlocked, /https:\/\/example\.test\/video/);
 });
 
 test('admin can edit all five per-content task destinations', async () => {
@@ -108,6 +137,41 @@ test('admin can edit all five per-content task destinations', async () => {
   });
   for (let slot = 1; slot <= 5; slot++) assert.match(rendered, new RegExp(`name="taskLink${slot}"`));
   assert.match(rendered, /Use default link/);
+});
+
+test('profile shows fixed withdrawal progress and disables requests until all requirements are met', async () => {
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'user/profile.ejs'), {
+    title: 'Your Profile',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/profile',
+    telegramWebAppUrl: 'https://example.test',
+    user: { firstName: 'Test', lastName: '', username: 'test', photoUrl: '', telegramId: '123', referralCount: 0, balance: 0 },
+    requirements: { referrals: 10, tasks: 15, unlocks: 20, referralCount: 0, completedTasks: 0, unlockedContents: 0, canWithdraw: false },
+    withdrawals: [],
+    minWithdrawAmount: 100
+  });
+  assert.match(rendered, /0 \/ 10/);
+  assert.match(rendered, /0 \/ 15/);
+  assert.match(rendered, /0 \/ 20/);
+  assert.match(rendered, /id="withdraw-form"/);
+  assert.match(rendered, /type="submit" disabled/);
+  assert.match(rendered, /Complete the requirements above/);
+});
+
+test('admin can edit a list of rotating video reward links', async () => {
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'admin/video-reward-links.ejs'), {
+    title: 'Video reward links',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/admin/video-reward-links',
+    adminUsername: 'admin',
+    links: 'https://example.test/1\nhttps://example.test/2',
+    defaultTaskLink: 'https://example.test/default'
+  });
+  assert.match(rendered, /name="links"/);
+  assert.match(rendered, /https:\/\/example\.test\/1/);
+  assert.match(rendered, /after watching for one minute/);
 });
 
 test('complex admin management templates render representative records', async () => {

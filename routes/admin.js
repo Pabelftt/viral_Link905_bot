@@ -18,6 +18,7 @@ const { approveTaskCompletion } = require('../services/rewardService');
 const { createBroadcast } = require('../services/broadcastService');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
 const { CONTENT_TASK_COUNT, DEFAULT_CONTENT_TASK_LINK } = require('../services/contentTasks');
+const { DEFAULT_VIDEO_REWARD_LINK } = require('../services/dailyVideoReward');
 
 const router = express.Router();
 const loginLimiter = require('express-rate-limit').rateLimit({
@@ -185,6 +186,25 @@ router.get('/admin/contents', asyncRoute(async (req, res) => {
 router.get('/admin/content-tasks', asyncRoute(async (req, res) => {
   const contents = await Content.find().sort({ createdAt: -1 }).limit(100).lean();
   res.render('admin/content-tasks', { title: 'Content task links', contents, csrfToken: req.session.csrfToken, defaultTaskLink: DEFAULT_CONTENT_TASK_LINK });
+}));
+
+router.get('/admin/video-reward-links', asyncRoute(async (req, res) => {
+  const setting = await Setting.findOne({ key: 'dailyVideoLinks' }).select('value').lean();
+  res.render('admin/video-reward-links', {
+    title: 'Video reward links',
+    links: Array.isArray(setting?.value) ? setting.value.join('\n') : '',
+    defaultTaskLink: DEFAULT_VIDEO_REWARD_LINK,
+    csrfToken: req.session.csrfToken
+  });
+}));
+
+router.post('/admin/video-reward-links', [body('links').isString().isLength({ max: 20000 })], validate, asyncRoute(async (req, res) => {
+  const rawLinks = String(req.body.links || '').split(/\r?\n/).map((link) => link.trim()).filter(Boolean);
+  if (rawLinks.length > 100) throw Object.assign(new Error('Add no more than 100 video links.'), { status: 400 });
+  const links = rawLinks.map((link) => cleanUrl(link, false));
+  await Setting.updateOne({ key: 'dailyVideoLinks' }, { $set: { value: links } }, { upsert: true });
+  await ActivityLog.create({ actorType: 'admin', action: 'video_reward_links_updated', targetType: 'setting', targetId: 'dailyVideoLinks', details: { count: links.length } });
+  res.redirect('/admin/video-reward-links');
 }));
 
 router.post('/admin/content-tasks/:id', [param('id').isMongoId()], validate, asyncRoute(async (req, res) => {

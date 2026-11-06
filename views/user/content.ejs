@@ -1,7 +1,7 @@
 <%- include('../partials/user-head', { title, csrfToken }) %>
 <%- include('../partials/user-header', { user }) %>
 <a href="/" class="back-link"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Back to links</a>
-<article class="content-detail" data-content-id="<%= content._id %>">
+<article class="content-detail" data-content-id="<%= content._id %>" <%= typeof unlockExpiresAt !== 'undefined' && unlockExpiresAt ? `data-unlock-expires-at="${unlockExpiresAt.getTime()}"` : '' %>>
   <div class="detail-cover"><% if (content.imageUrl) { %><img src="<%= content.imageUrl %>" alt="<%= content.title %>"><% } else { %><span class="image-placeholder"><i class="fa-solid fa-video" aria-hidden="true"></i></span><% } %></div>
   <div class="detail-heading"><div><p class="eyebrow">LINKHUB CONTENT</p><h1><%= content.title %></h1><div class="content-meta"><span><i class="fa-regular fa-calendar" aria-hidden="true"></i> <%= new Date(content.date).toLocaleDateString() %></span><span><i class="fa-solid fa-eye" aria-hidden="true"></i> <%= content.totalViews.toLocaleString() %> views</span></div></div><button class="icon-button" data-share="<%= content.title %>" data-url="<%= telegramWebAppUrl %>/content/<%= content._id %>" aria-label="Share <%= content.title %>"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button></div>
   <section class="content-section">
@@ -10,7 +10,7 @@
       <% tasks.forEach((task) => { %><article class="task-card content-task-card" data-content-id="<%= content._id %>" data-task-slot="<%= task.slot %>" data-task-link="<%= task.taskLink %>" data-started="<%= task.started %>"><span class="task-logo"><i class="fa-solid <%= task.completed ? 'fa-circle-check' : 'fa-bullseye' %>" aria-hidden="true"></i></span><div class="task-copy"><strong>Task <%= task.slot + 1 %></strong><small class="muted"><%= task.started && !task.completed ? 'Return here and claim this task.' : task.completed ? 'Task completed.' : 'Open the task link to get started.' %></small></div><div class="task-action"><% if (task.completed) { %><span class="status-pill success">Completed</span><% } else { %><button class="button button-small button-primary" data-content-task-action><%= task.started ? 'Claim Task' : 'Start Task' %></button><% } %></div></article><% }) %>
     </div>
   </section>
-  <% if (content.videoUrl) { %><section class="card unlocked-content" data-unlocked-content <%= allDone ? '' : 'hidden' %>><div class="unlock-title"><i class="fa-solid fa-lock-open" aria-hidden="true"></i><h2>Content unlocked</h2></div><a class="button button-primary" data-watch-video target="_blank" rel="noopener noreferrer" <% if (allDone) { %>href="<%= content.videoUrl %>"<% } else { %>hidden<% } %>><i class="fa-solid fa-download" aria-hidden="true"></i> Watch / Download Now</a></section><% } %>
+  <% if (content.videoUrl) { %><section class="card unlocked-content" data-unlocked-content <%= allDone ? '' : 'hidden' %>><div class="unlock-title"><i class="fa-solid fa-lock-open" aria-hidden="true"></i><h2>Content unlocked</h2></div><p class="muted" data-unlock-expiry>Available for one hour after completing all tasks.</p><a class="button button-primary" data-watch-video target="_blank" rel="noopener noreferrer" <% if (allDone) { %>href="/content/<%= content._id %>/watch"<% } else { %>hidden<% } %>><i class="fa-solid fa-download" aria-hidden="true"></i> Watch / Download Now</a></section><% } %>
 </article>
 <%- include('../partials/user-nav') %>
 <%- include('../partials/user-foot') %>

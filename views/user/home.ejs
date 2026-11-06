@@ -14,8 +14,8 @@
   <div class="filter-tabs" role="group" aria-label="Sort links">
     <button class="filter-chip selected" data-sort="latest">Latest</button><button class="filter-chip" data-sort="views">Most Viewed</button><button class="filter-chip" data-sort="trending">Trending</button>
   </div>
-  <div class="content-grid" id="content-list">
-    <% contents.forEach((content) => { %><article class="content-card" data-navigation-href="/content/<%= content._id %>" role="link" tabindex="0">
+  <div class="content-grid" id="content-list" data-page="1" data-has-more="<%= typeof hasMoreContents !== 'undefined' && hasMoreContents %>">
+    <% contents.forEach((content) => { %><article class="content-card" data-navigation-href="/content/<%= content._id %>" <%= content.taskProgress?.unlockExpiresAt ? `data-unlock-expires-at="${new Date(content.taskProgress.unlockExpiresAt).getTime()}"` : '' %> role="link" tabindex="0">
       <a class="content-image" href="/content/<%= content._id %>"><% if (content.imageUrl) { %><img src="<%= content.imageUrl %>" alt="" loading="lazy"><% } else { %><span class="image-placeholder"><i class="fa-solid fa-video" aria-hidden="true"></i></span><% } %><span class="lock-badge"><i class="fa-solid <%= content.isUnlocked ? 'fa-lock-open' : 'fa-lock' %>" aria-hidden="true"></i> <%= content.isUnlocked ? 'Unlocked' : 'Locked' %></span></a>
       <div class="content-card-body"><div class="content-meta"><span><i class="fa-regular fa-calendar" aria-hidden="true"></i> <%= new Date(content.date).toLocaleDateString() %></span><span><i class="fa-solid fa-eye" aria-hidden="true"></i> <%= Number(content.totalViews || 0).toLocaleString() %></span></div>
         <h3><a href="/content/<%= content._id %>"><%= content.title %></a></h3><div class="content-card-footer"><span class="task-count"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tasks (<%= content.taskProgress?.completed || 0 %>/<%= content.taskProgress?.total ?? 5 %>)</span><div class="card-actions"><button class="icon-button" data-share="<%= content.title %>" data-url="<%= telegramWebAppUrl %>/content/<%= content._id %>" aria-label="Share <%= content.title %>"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button></div></div>
@@ -23,7 +23,7 @@
     </article><% }) %>
   </div>
   <% if (!contents.length) { %><div class="empty-state"><i class="fa-solid fa-video" aria-hidden="true"></i><h3>No viral links yet</h3><p>New content will appear here soon.</p></div><% } %>
-  <button class="button button-outline load-more" id="load-more" hidden>Load more</button>
+  <p class="muted small scroll-sentinel" id="content-scroll-sentinel" aria-live="polite"><%= typeof hasMoreContents !== 'undefined' && hasMoreContents ? 'Scroll to load more links.' : 'You have reached the end.' %></p>
 </section>
 <%- include('../partials/user-nav') %>
 <%- include('../partials/user-foot') %>

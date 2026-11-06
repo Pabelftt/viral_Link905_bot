@@ -109,6 +109,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .button-small { min-height: 33px; padding: 7px 10px; border-radius: 10px; font-size: 11px; }
 .button-telegram { width: 100%; margin-top: 11px; color: #fff; background: #229ed9; }
 .load-more { display: flex; margin: 18px auto 0; }
+.scroll-sentinel { min-height: 36px; margin: 18px 0 0; padding: 10px 0; text-align: center; }
 .empty-state { padding: 35px 20px; color: var(--muted); text-align: center; }
 .empty-state > i { color: var(--primary); font-size: 26px; }
 .empty-state h3 { margin: 9px 0 2px; color: var(--text); font-size: 16px; }

@@ -4,6 +4,9 @@
 
   function initializePage() {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  window.__linkHubContentObserver?.disconnect();
+  clearInterval(window.__linkHubRewardTimer);
+  clearTimeout(window.__linkHubUnlockTimer);
   let toastTimer;
   function isDarkColor(color) {
     const value = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color || '')?.[1];
@@ -86,11 +89,15 @@
   }
   if (document.querySelector('[data-auth-status]')) authenticate();
 
+  let contentPage = 1;
+  let contentHasMore = false;
+  let contentLoading = false;
   async function loadContents(page = 1, append = false) {
     const list = document.getElementById('content-list');
-    if (!list) return;
+    if (!list || contentLoading || append && !contentHasMore) return;
     const search = document.getElementById('search-input')?.value || '';
     const sort = document.querySelector('.filter-chip.selected')?.dataset.sort || 'latest';
+    contentLoading = true;
     try {
       const params = new URLSearchParams({ q: search, sort, page: String(page) });
       const result = await api(`/api/contents?${params}`);
@@ -106,6 +113,9 @@
         const unlocked = Boolean(content.isUnlocked);
         const completed = Number(content.taskProgress?.completed || 0);
         const total = Number(content.taskProgress?.total ?? 5);
+        const unlockExpiresAt = unlocked && content.taskProgress?.unlockExpiresAt
+          ? new Date(content.taskProgress.unlockExpiresAt).getTime() : 0;
+        if (unlockExpiresAt) card.dataset.unlockExpiresAt = String(unlockExpiresAt);
         card.dataset.navigationHref = `/content/${encodeURIComponent(content._id)}`;
         card.setAttribute('role', 'link');
         card.tabIndex = 0;
@@ -117,13 +127,33 @@
       if (!append && result.contents.length === 0) {
         list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-video" aria-hidden="true"></i><h3>No matching links</h3><p>Try a different search or filter.</p></div>';
       } else list.append(fragment);
-      const loadMore = document.getElementById('load-more');
-      if (loadMore) {
-        loadMore.hidden = !result.hasMore;
-        loadMore.dataset.page = String(page);
-      }
+      contentPage = result.page;
+      contentHasMore = result.hasMore;
+      list.dataset.page = String(contentPage);
+      list.dataset.hasMore = String(contentHasMore);
+      scheduleHomeUnlockExpiry();
+      const sentinel = document.getElementById('content-scroll-sentinel');
+      if (sentinel) sentinel.textContent = contentHasMore ? 'Loading more links as you scroll…' : 'You have reached the end.';
     } catch (error) {
       notify(error.message, 'error');
+    } finally {
+      contentLoading = false;
+    }
+  }
+
+  const contentList = document.getElementById('content-list');
+  if (contentList) {
+    contentPage = Number(contentList.dataset.page || 1);
+    contentHasMore = contentList.dataset.hasMore === 'true';
+    const sentinel = document.getElementById('content-scroll-sentinel');
+    if (sentinel && 'IntersectionObserver' in window) {
+      window.__linkHubContentObserver?.disconnect();
+      window.__linkHubContentObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && contentHasMore && !contentLoading) {
+          loadContents(contentPage + 1, true);
+        }
+      }, { rootMargin: '400px' });
+      window.__linkHubContentObserver.observe(sentinel);
     }
   }
 
@@ -135,7 +165,7 @@
     document.querySelectorAll('.filter-chip').forEach((chip) => chip.classList.toggle('selected', chip === button));
     loadContents(1);
   }));
-  document.getElementById('load-more')?.addEventListener('click', (event) => loadContents(Number(event.currentTarget.dataset.page || 1) + 1, true));
+  document.getElementById('load-more')?.addEventListener('click', () => loadContents(contentPage + 1, true));
 
   async function startTask(taskId, contentId, card, taskType) {
     const result = await api(`/api/tasks/${taskId}/start`, {
@@ -228,10 +258,15 @@
             if (result.completed === result.total) {
               const unlocked = document.querySelector('[data-unlocked-content]');
               const videoLink = unlocked?.querySelector('[data-watch-video]');
-              if (videoLink && result.videoUrl) {
-                videoLink.href = result.videoUrl;
+              if (videoLink && result.watchUrl) {
+                videoLink.href = result.watchUrl;
                 videoLink.hidden = false;
                 unlocked.hidden = false;
+                const detail = document.querySelector('.content-detail');
+                if (detail && result.unlockExpiresAt) {
+                  detail.dataset.unlockExpiresAt = String(new Date(result.unlockExpiresAt).getTime());
+                  scheduleContentUnlockExpiry(detail);
+                }
               }
               notify('All tasks completed. Content unlocked!');
             } else notify('Task completed.');
@@ -246,51 +281,109 @@
     });
   }
 
+  function scheduleContentUnlockExpiry(detail) {
+    const expiresAt = Number(detail.dataset.unlockExpiresAt || 0);
+    const remaining = expiresAt - Date.now();
+    if (remaining > 0) {
+      window.__linkHubUnlockTimer = setTimeout(() => {
+        window.linkHubNavigate(location.href, { replace: true });
+      }, remaining);
+    }
+  }
+
+  function scheduleHomeUnlockExpiry() {
+    clearTimeout(window.__linkHubUnlockTimer);
+    const expirations = [...document.querySelectorAll('.content-card[data-unlock-expires-at]')]
+      .map((card) => Number(card.dataset.unlockExpiresAt))
+      .filter((timestamp) => timestamp > Date.now());
+    if (expirations.length) {
+      window.__linkHubUnlockTimer = setTimeout(() => {
+        window.linkHubNavigate(location.href, { replace: true });
+      }, Math.min(...expirations) - Date.now());
+    }
+  }
+
+  const contentDetail = document.querySelector('.content-detail[data-unlock-expires-at]');
+  if (contentDetail) scheduleContentUnlockExpiry(contentDetail);
+  else if (document.getElementById('content-list')) scheduleHomeUnlockExpiry();
+
+  function setRewardCountdown(button, remainingSeconds) {
+    clearInterval(window.__linkHubRewardTimer);
+    let remaining = Math.max(0, Number(remainingSeconds) || 0);
+    const update = () => {
+      button.disabled = remaining > 0;
+      button.textContent = remaining > 0
+        ? `Claim in 00:${String(remaining).padStart(2, '0')}`
+        : 'Claim ৳20';
+    };
+    update();
+    if (remaining > 0) {
+      window.__linkHubRewardTimer = setInterval(() => {
+        remaining -= 1;
+        update();
+        if (remaining <= 0) clearInterval(window.__linkHubRewardTimer);
+      }, 1000);
+    }
+  }
+
+  async function loadVideoReward() {
+    const button = document.querySelector('[data-video-task]');
+    if (!button) return;
+    button.disabled = true;
+    try {
+      const state = await api('/api/video-reward/status');
+      button.dataset.started = String(state.active);
+      if (state.active) setRewardCountdown(button, state.remainingSeconds);
+      else {
+        button.textContent = 'Start Watching';
+        button.disabled = false;
+      }
+      if (!button.dataset.bound) {
+        button.dataset.bound = 'true';
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          let taskWindow;
+          try {
+            if (button.dataset.started === 'true') {
+              const result = await api('/api/video-reward/claim', { method: 'POST' });
+              button.dataset.started = 'false';
+              button.textContent = 'Start Watching';
+              button.disabled = false;
+              const balance = document.querySelector('[data-user-balance]');
+              if (balance && result.balance !== undefined) balance.textContent = `৳${Number(result.balance).toFixed(2)}`;
+              notify(`৳${Number(result.reward).toFixed(2)} added to your balance.`);
+            } else {
+              taskWindow = window.open('about:blank', '_blank');
+              if (taskWindow) taskWindow.opener = null;
+              const result = await api('/api/video-reward/start', { method: 'POST' });
+              button.dataset.started = 'true';
+              setRewardCountdown(button, result.remainingSeconds);
+              if (taskWindow) taskWindow.location = result.taskLink;
+              else if (tg?.openLink) tg.openLink(result.taskLink);
+              else window.open(result.taskLink, '_blank', 'noopener,noreferrer');
+              notify('Video started. Return after one minute to claim ৳20.');
+            }
+          } catch (error) {
+            taskWindow?.close();
+            notify(error.message, 'error');
+            if (button.dataset.started === 'true') {
+              button.disabled = false;
+              button.textContent = 'Claim ৳20';
+            } else button.disabled = false;
+          }
+        });
+      }
+    } catch (error) {
+      notify(error.message, 'error');
+      button.disabled = false;
+    }
+  }
+
   async function loadTasks() {
     const list = document.getElementById('task-list');
     if (!list) return;
     try {
       const result = await api('/api/tasks');
-      const todayCount = result.dailyCount || 0;
-      const dailyCount = document.getElementById('daily-count');
-      if (dailyCount) dailyCount.textContent = `${todayCount}/${result.dailyLimit}`;
-      const dailyButton = document.querySelector('[data-video-task]');
-      const dailyTask = result.tasks.find((task) => task.type === 'daily-video');
-      const rewardLabel = document.getElementById('daily-reward');
-      if (dailyTask && rewardLabel) rewardLabel.textContent = `Get ৳${Number(dailyTask.reward).toFixed(2)} per full completion`;
-      if (dailyButton) {
-        if (!dailyTask) dailyButton.disabled = true;
-        else {
-          const status = dailyTask.completion?.status;
-          if (status === 'completed' || status === 'pending') {
-            dailyButton.disabled = true;
-            dailyButton.textContent = status === 'completed' ? 'Completed today' : 'Pending review';
-          } else {
-            dailyButton.dataset.started = String(status === 'started');
-            dailyButton.addEventListener('click', async () => {
-              dailyButton.disabled = true;
-              try {
-                if (dailyButton.dataset.started === 'true') {
-                  const data = await api(`/api/tasks/${dailyTask._id}/verify`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
-                  });
-                  notify(data.message);
-                  dailyButton.textContent = 'Pending review';
-                } else {
-                  await startTask(dailyTask._id, null, dailyButton.parentElement, dailyTask.type);
-                  dailyButton.dataset.started = 'true';
-                  dailyButton.textContent = 'Submit for review';
-                }
-              } catch (error) {
-                notify(error.message, 'error');
-              } finally {
-                if (dailyButton.textContent !== 'Pending review') dailyButton.disabled = false;
-              }
-            });
-            if (status === 'started') dailyButton.textContent = 'Submit for review';
-          }
-        }
-      }
       const available = result.tasks.filter((task) => task.type !== 'daily-video');
       if (!available.length) {
         list.innerHTML = '<div class="empty-state card"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><h3>No partner tasks yet</h3><p>New earning opportunities will appear here.</p></div>';
@@ -316,6 +409,7 @@
     }
   }
   loadTasks();
+  loadVideoReward();
   document.querySelectorAll('.task-card[data-task-action]').forEach(attachTaskCard);
 
   if (!window.__linkHubShareBound) {

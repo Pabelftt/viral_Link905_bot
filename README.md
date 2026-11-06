@@ -52,7 +52,10 @@ npm run seed
 - Admin state-changing forms require a session CSRF token. User sessions are created only after Telegram WebApp verification.
 - Manage links, task definitions, user balances and suspension, task reviews, withdrawals, broadcasts and the home banner from the dashboard.
 - Set up to five per-content task destinations from **Content task links**. Blank fields use the configured default link. Users can start and claim each task, and the task count is saved per user and content.
+- Configure multiple rotating video reward destinations from **Video reward links**. Users can claim ৳20 after the 60-second countdown; an empty list uses the default destination.
 - The user Mini App uses client-side navigation for internal pages, so opening a content card or switching user sections does not reload the document.
+- Content unlocks remain available for one hour, after which all five tasks must be completed again. The home feed initially shows 20 newest links and loads more as the user scrolls.
+- Withdrawals require 10 referrals, 15 completed tasks, and 20 distinct content unlocks. The server enforces all three thresholds.
 
 ## Deployment and security
 
@@ -70,7 +73,7 @@ npm run seed
 
 ## Configuration
 
-See `.env.example` for supported environment variables. `MIN_WITHDRAW_AMOUNT`, `DAILY_VIDEO_LIMIT`, and the optional `WITHDRAW_REQUIRED_*` values are validated at startup. The Telegram theme is preferred in the Mini App; outside Telegram, the browser's `prefers-color-scheme` controls the theme. Font Awesome is served locally from the installed package.
+See `.env.example` for supported environment variables. `MIN_WITHDRAW_AMOUNT` and `DAILY_VIDEO_LIMIT` are validated at startup. Withdrawal thresholds are fixed at 10 referrals, 15 completed tasks, and 20 distinct content unlocks. The Telegram theme is preferred in the Mini App; outside Telegram, the browser's `prefers-color-scheme` controls the theme. Font Awesome is served locally from the installed package.
 
 ## Notes
 

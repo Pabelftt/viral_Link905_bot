@@ -1,0 +1,16 @@
+<%- include('layout-head', { title, csrfToken }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { currentPath: '/admin/video-reward-links' }) %>
+  <main class="admin-main">
+    <header class="admin-topbar"><div><p class="eyebrow">MANAGEMENT</p><h1><%= title %></h1></div><span class="admin-user"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> <%= adminUsername %></span></header>
+    <section class="card admin-panel">
+      <p class="muted">Add one safe HTTP/HTTPS link per line. Each user's next video reward rotates to the next link. Users can claim ৳20 after watching for one minute. If the list is empty, the default link is used: <a href="<%= defaultTaskLink %>" target="_blank" rel="noopener noreferrer"><%= defaultTaskLink %></a></p>
+      <form method="post" action="/admin/video-reward-links" class="stack-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label>Video reward links<textarea name="links" rows="10" maxlength="20000" placeholder="https://example.com/video-1&#10;https://example.com/video-2"><%= links %></textarea></label>
+        <button class="button button-primary">Save video links</button>
+      </form>
+    </section>
+  </main>
+</div>
+<%- include('layout-foot') %>
