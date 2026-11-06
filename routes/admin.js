@@ -17,6 +17,7 @@ const { requireCsrf } = require('../middleware/csrf');
 const { approveTaskCompletion } = require('../services/rewardService');
 const { createBroadcast } = require('../services/broadcastService');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
+const { CONTENT_TASK_COUNT, DEFAULT_CONTENT_TASK_LINK } = require('../services/contentTasks');
 
 const router = express.Router();
 const loginLimiter = require('express-rate-limit').rateLimit({
@@ -62,6 +63,10 @@ async function removeBroadcast(id) {
   await BroadcastDelivery.deleteMany({ broadcastId: broadcast._id });
   await Broadcast.deleteOne({ _id: broadcast._id });
   await ActivityLog.create({ actorType: 'admin', action: 'broadcast_deleted', targetType: 'broadcast', targetId: String(broadcast._id) });
+}
+
+function contentTaskLinks(body) {
+  return Array.from({ length: CONTENT_TASK_COUNT }, (_, index) => cleanUrl(body[`taskLink${index + 1}`]));
 }
 
 router.get('/admin/login', (req, res) => {
@@ -177,6 +182,22 @@ router.get('/admin/contents', asyncRoute(async (req, res) => {
   res.render('admin/section', { title: 'Viral links', section: 'contents', items, csrfToken: req.session.csrfToken });
 }));
 
+router.get('/admin/content-tasks', asyncRoute(async (req, res) => {
+  const contents = await Content.find().sort({ createdAt: -1 }).limit(100).lean();
+  res.render('admin/content-tasks', { title: 'Content task links', contents, csrfToken: req.session.csrfToken, defaultTaskLink: DEFAULT_CONTENT_TASK_LINK });
+}));
+
+router.post('/admin/content-tasks/:id', [param('id').isMongoId()], validate, asyncRoute(async (req, res) => {
+  const taskLinks = contentTaskLinks(req.body);
+  const content = await Content.findByIdAndUpdate(req.params.id, { $set: { taskLinks } }, { new: true, runValidators: true });
+  if (!content) throw Object.assign(new Error('Content not found.'), { status: 404 });
+  await ActivityLog.create({
+    actorType: 'admin', action: 'content_task_links_updated',
+    targetType: 'content', targetId: String(content._id)
+  });
+  res.redirect('/admin/content-tasks');
+}));
+
 router.post('/admin/contents/bulk', [
   body('ids').custom((value) => Array.isArray(value) || typeof value === 'string'),
   body('action').isIn(['activate', 'deactivate', 'trending', 'delete'])
@@ -204,7 +225,7 @@ router.post('/admin/contents', [
     videoUrl: cleanUrl(req.body.videoUrl),
     date: req.body.date ? new Date(req.body.date) : new Date(),
     totalViews: Number(req.body.totalViews || 0),
-    requiredTaskCount: Number(req.body.requiredTaskCount || 0),
+    requiredTaskCount: CONTENT_TASK_COUNT,
     isActive: bool(req.body.isActive),
     isTrending: bool(req.body.isTrending)
   });
@@ -221,7 +242,6 @@ router.post('/admin/contents/:id', [param('id').isMongoId(), body('title').optio
     if (req.body.imageUrl !== undefined) updates.imageUrl = cleanUrl(req.body.imageUrl);
     if (req.body.videoUrl !== undefined) updates.videoUrl = cleanUrl(req.body.videoUrl);
     if (req.body.totalViews !== undefined) updates.totalViews = Number(req.body.totalViews);
-    if (req.body.requiredTaskCount !== undefined) updates.requiredTaskCount = Number(req.body.requiredTaskCount);
     if (req.body.date) updates.date = new Date(req.body.date);
     if (!Object.keys(updates).length) throw Object.assign(new Error('No content changes were submitted.'), { status: 400 });
     const updated = await Content.findByIdAndUpdate(req.params.id, { $set: updates }, { runValidators: true });

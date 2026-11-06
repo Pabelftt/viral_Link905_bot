@@ -1,8 +1,10 @@
 (() => {
   const tg = window.Telegram?.WebApp;
+  let currentUrl = location.href;
+
+  function initializePage() {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   let toastTimer;
-
   function isDarkColor(color) {
     const value = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color || '')?.[1];
     if (!value) return false;
@@ -25,15 +27,18 @@
   }
 
   applyTheme();
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
-  tg?.onEvent?.('themeChanged', applyTheme);
+  if (!window.__linkHubThemeBound) {
+    window.__linkHubThemeBound = true;
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
+    tg?.onEvent?.('themeChanged', applyTheme);
+    tg?.BackButton?.onClick(() => history.back());
+  }
   if (tg) {
     tg.ready();
     tg.expand();
     tg.enableClosingConfirmation?.();
     if (document.body.dataset.page?.startsWith('/content/')) {
       tg.BackButton?.show();
-      tg.BackButton?.onClick(() => history.back());
     } else {
       tg.BackButton?.hide();
     }
@@ -73,7 +78,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initData: tg.initData })
       });
-      location.assign(result.redirect || '/');
+      await window.linkHubNavigate(result.redirect || '/', { replace: true });
     } catch (error) {
       if (status) status.textContent = `Telegram sign-in failed: ${error.message}`;
       notify(error.message, 'error');
@@ -100,10 +105,13 @@
         const date = new Date(content.date).toLocaleDateString();
         const unlocked = Boolean(content.isUnlocked);
         const completed = Number(content.taskProgress?.completed || 0);
-        const total = Number(content.taskProgress?.total ?? content.requiredTaskCount ?? 0);
+        const total = Number(content.taskProgress?.total ?? 5);
+        card.dataset.navigationHref = `/content/${encodeURIComponent(content._id)}`;
+        card.setAttribute('role', 'link');
+        card.tabIndex = 0;
         card.innerHTML = `<a class="content-image" href="/content/${encodeURIComponent(content._id)}">${image}<span class="lock-badge"><i class="fa-solid ${unlocked ? 'fa-lock-open' : 'fa-lock'}" aria-hidden="true"></i> ${unlocked ? 'Unlocked' : 'Locked'}</span></a>
-          <div class="content-card-body"><div class="content-meta"><span><i class="fa-regular fa-calendar" aria-hidden="true"></i> ${escapeHtml(date)}</span><span><i class="fa-solid fa-eye" aria-hidden="true"></i> ${Number(content.totalViews || 0).toLocaleString()}</span></div>
-          <h3><a href="/content/${encodeURIComponent(content._id)}">${escapeHtml(content.title)}</a></h3><div class="content-card-footer"><span class="task-count"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tasks (${completed}/${total})</span><div class="card-actions"><button class="icon-button" data-share="${escapeHtml(content.title)}" data-url="${escapeHtml(location.origin + '/content/' + content._id)}" aria-label="Share ${escapeHtml(content.title)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button><a class="button button-small button-dark" href="/content/${encodeURIComponent(content._id)}">Details</a></div></div></div>`;
+            <div class="content-card-body"><div class="content-meta"><span><i class="fa-regular fa-calendar" aria-hidden="true"></i> ${escapeHtml(date)}</span><span><i class="fa-solid fa-eye" aria-hidden="true"></i> ${Number(content.totalViews || 0).toLocaleString()}</span></div>
+            <h3><a href="/content/${encodeURIComponent(content._id)}">${escapeHtml(content.title)}</a></h3><div class="content-card-footer"><span class="task-count"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tasks (${completed}/${total})</span><div class="card-actions"><button class="icon-button" data-share="${escapeHtml(content.title)}" data-url="${escapeHtml(location.origin + '/content/' + content._id)}" aria-label="Share ${escapeHtml(content.title)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button></div></div></div>`;
         fragment.append(card);
       });
       if (!append && result.contents.length === 0) {
@@ -143,8 +151,10 @@
       if (target) {
         target.opener = null;
         target.location = result.taskLink;
+      } else if (tg?.openLink) {
+        tg.openLink(result.taskLink);
       } else {
-        window.location.assign(result.taskLink);
+        window.open(result.taskLink, '_blank', 'noopener,noreferrer');
       }
     }
     notify('Task started. Return here when you are done.');
@@ -179,6 +189,60 @@
       } finally {
         button.disabled = false;
       }
+    });
+  }
+
+  function attachContentTaskCards() {
+    document.querySelectorAll('.content-task-card:not([data-bound])').forEach((card) => {
+      card.dataset.bound = 'true';
+      const button = card.querySelector('[data-content-task-action]');
+      if (!button) return;
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        let taskWindow;
+        try {
+          if (card.dataset.started !== 'true') {
+            taskWindow = window.open('about:blank', '_blank');
+            if (taskWindow) taskWindow.opener = null;
+            const result = await api(`/api/contents/${card.dataset.contentId}/tasks/${card.dataset.taskSlot}/start`, { method: 'POST' });
+            card.dataset.started = 'true';
+            button.textContent = 'Claim Task';
+            card.querySelector('.task-copy small').textContent = 'Return here and claim this task.';
+            const taskLink = result.taskLink || card.dataset.taskLink;
+            if (!taskLink) throw new Error('This task does not have a destination link.');
+            if (taskWindow) taskWindow.location = taskLink;
+            else if (tg?.openLink) tg.openLink(taskLink);
+            else window.open(taskLink, '_blank', 'noopener,noreferrer');
+            notify('Task started. Return here and claim it when you are done.');
+          } else {
+            const result = await api(`/api/contents/${card.dataset.contentId}/tasks/${card.dataset.taskSlot}/claim`, { method: 'POST' });
+            card.dataset.started = 'false';
+            card.querySelector('.task-action').innerHTML = '<span class="status-pill success">Completed</span>';
+            card.querySelector('.task-logo i')?.classList.replace('fa-bullseye', 'fa-circle-check');
+            card.querySelector('.task-copy small').textContent = 'Task completed.';
+            const progress = document.querySelector('[data-content-progress]');
+            if (progress) {
+              progress.innerHTML = `<i class="fa-solid ${result.completed === result.total ? 'fa-lock-open' : 'fa-lock'}" aria-hidden="true"></i> ${result.completed}/${result.total} completed`;
+              progress.classList.toggle('success', result.completed === result.total);
+            }
+            if (result.completed === result.total) {
+              const unlocked = document.querySelector('[data-unlocked-content]');
+              const videoLink = unlocked?.querySelector('[data-watch-video]');
+              if (videoLink && result.videoUrl) {
+                videoLink.href = result.videoUrl;
+                videoLink.hidden = false;
+                unlocked.hidden = false;
+              }
+              notify('All tasks completed. Content unlocked!');
+            } else notify('Task completed.');
+          }
+        } catch (error) {
+          taskWindow?.close();
+          notify(error.message, 'error');
+        } finally {
+          if (button.isConnected) button.disabled = false;
+        }
+      });
     });
   }
 
@@ -254,20 +318,23 @@
   loadTasks();
   document.querySelectorAll('.task-card[data-task-action]').forEach(attachTaskCard);
 
-  document.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-share]');
-    if (!button) return;
-    const shareData = { title: button.dataset.share, url: button.dataset.url };
-    try {
-      if (navigator.share) await navigator.share(shareData);
-      else {
-        await navigator.clipboard.writeText(shareData.url);
-        notify('Link copied to clipboard.');
+  if (!window.__linkHubShareBound) {
+    window.__linkHubShareBound = true;
+    document.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-share]');
+      if (!button) return;
+      const shareData = { title: button.dataset.share, url: button.dataset.url };
+      try {
+        if (navigator.share) await navigator.share(shareData);
+        else {
+          await navigator.clipboard.writeText(shareData.url);
+          notify('Link copied to clipboard.');
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') notify('Unable to share this link.', 'error');
       }
-    } catch (error) {
-      if (error.name !== 'AbortError') notify('Unable to share this link.', 'error');
-    }
-  });
+    });
+  }
 
   document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
     const input = document.querySelector(button.dataset.copy);
@@ -281,7 +348,7 @@
     try {
       const result = await api(`/api/referral/claim/${button.dataset.claim}`, { method: 'POST' });
       notify(`৳${Number(result.reward).toFixed(2)} added to your balance.`);
-      location.reload();
+      await window.linkHubNavigate(location.href, { replace: true });
     } catch (error) { notify(error.message, 'error'); button.disabled = false; }
   }));
 
@@ -325,7 +392,7 @@
       message.textContent = result.message;
       message.classList.add('text-success');
       form.reset();
-      setTimeout(() => location.reload(), 1000);
+      setTimeout(() => window.linkHubNavigate(location.href, { replace: true }), 1000);
     } catch (error) {
       message.textContent = error.message;
       message.classList.remove('text-success');
@@ -345,4 +412,70 @@
   }));
 
   window.appNotify = notify;
+  attachContentTaskCards();
+  }
+
+  window.initializeLinkHubPage = initializePage;
+  initializePage();
+
+  async function navigate(url, { replace = false, popstate = false } = {}) {
+    let target = new URL(url, location.href);
+    if (target.origin !== location.origin || target.pathname.startsWith('/admin')) {
+      location.assign(target.href);
+      return;
+    }
+    try {
+      const response = await fetch(target.href, {
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'LinkHub-SPA' }
+      });
+      if (!response.ok) throw new Error(`Page request failed (${response.status}).`);
+      if (response.redirected) target = new URL(response.url);
+      const markup = await response.text();
+      const page = new DOMParser().parseFromString(markup, 'text/html');
+      const nextShell = page.querySelector('.app-shell');
+      const currentShell = document.querySelector('.app-shell');
+      if (!nextShell || !currentShell) {
+        throw new Error('This page is not available in the LinkHub app.');
+      }
+      currentShell.innerHTML = nextShell.innerHTML;
+      document.title = page.title;
+      document.body.dataset.page = page.body.dataset.page || target.pathname;
+      const nextCsrf = page.querySelector('meta[name="csrf-token"]')?.content;
+      const currentCsrf = document.querySelector('meta[name="csrf-token"]');
+      if (nextCsrf && currentCsrf) currentCsrf.content = nextCsrf;
+      if (!popstate) {
+        if (replace) history.replaceState({ linkHub: true }, '', target.href);
+        else history.pushState({ linkHub: true }, '', target.href);
+      }
+      currentUrl = target.href;
+      window.initializeLinkHubPage();
+      window.scrollTo(0, 0);
+    } catch (error) {
+      window.appNotify?.(error.message, 'error');
+      if (popstate) history.pushState({ linkHub: true }, '', currentUrl);
+    }
+  }
+
+  window.linkHubNavigate = navigate;
+  history.replaceState({ linkHub: true }, '', location.href);
+  document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target.closest('a[href]');
+    const card = event.target.closest('[data-navigation-href]');
+    if (!anchor && card && event.target.closest('button, input, select, textarea')) return;
+    const rawHref = anchor?.href || card?.dataset.navigationHref;
+    if (!rawHref || anchor?.target && anchor.target !== '_self' || anchor?.hasAttribute('download')) return;
+    const target = new URL(rawHref, location.href);
+    if (target.origin !== location.origin || target.pathname.startsWith('/admin')) return;
+    event.preventDefault();
+    navigate(target.href);
+  });
+  document.addEventListener('keydown', (event) => {
+    const card = event.target.closest('[data-navigation-href]');
+    if (!card || event.target !== card || !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    navigate(card.dataset.navigationHref);
+  });
+  window.addEventListener('popstate', () => navigate(location.href, { popstate: true }));
 })();

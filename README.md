@@ -51,6 +51,8 @@ npm run seed
 - Admin access uses the configured username and password, an HTTP-only session cookie, Mongo-backed session storage, and rate-limited login.
 - Admin state-changing forms require a session CSRF token. User sessions are created only after Telegram WebApp verification.
 - Manage links, task definitions, user balances and suspension, task reviews, withdrawals, broadcasts and the home banner from the dashboard.
+- Set up to five per-content task destinations from **Content task links**. Blank fields use the configured default link. Users can start and claim each task, and the task count is saved per user and content.
+- The user Mini App uses client-side navigation for internal pages, so opening a content card or switching user sections does not reload the document.
 
 ## Deployment and security
 

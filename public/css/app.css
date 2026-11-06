@@ -84,6 +84,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .filter-chip.selected { border-color: var(--primary); color: #fff; background: var(--primary); }
 .content-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .content-card { overflow: hidden; border: 1px solid var(--border); border-radius: 19px; background: var(--surface); box-shadow: 0 7px 22px rgba(32, 43, 61, .045); }
+.content-card[data-navigation-href] { cursor: pointer; }
+.content-card[data-navigation-href]:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 3px; }
 .content-image { position: relative; display: block; height: 128px; overflow: hidden; background: var(--surface-alt); }
 .content-image img { width: 100%; height: 100%; object-fit: cover; }
 .image-placeholder { display: grid; width: 100%; height: 100%; min-height: 140px; place-items: center; color: var(--primary); background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 17%, var(--surface)), var(--surface-alt)); font-size: 27px; }
@@ -193,6 +195,7 @@ textarea { resize: vertical; }
 .inline-code input { min-height: 36px; }
 .task-card .inline-code { max-width: 180px; }
 .unlocked-content { padding: 18px; }
+.unlocked-content[hidden] { display: none; }
 .unlock-title { display: flex; align-items: center; gap: 9px; color: var(--success); }
 .unlock-title h2 { margin: 0 0 12px; color: var(--text); font-size: 17px; }
 .unlocked-content iframe { width: 100%; min-height: 230px; border: 0; border-radius: 13px; background: #000; }

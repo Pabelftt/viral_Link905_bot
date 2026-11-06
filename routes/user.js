@@ -4,6 +4,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const { rateLimit } = require('express-rate-limit');
 const User = require('../models/User');
 const Content = require('../models/Content');
+const ContentTaskProgress = require('../models/ContentTaskProgress');
 const Task = require('../models/Task');
 const TaskCompletion = require('../models/TaskCompletion');
 const Withdrawal = require('../models/Withdrawal');
@@ -16,6 +17,7 @@ const { requireUser } = require('../middleware/auth');
 const { requireCsrf } = require('../middleware/csrf');
 const { verifyTelegramInitData } = require('../services/telegramAuth');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
+const { CONTENT_TASK_COUNT, getContentTaskLinks } = require('../services/contentTasks');
 
 const router = express.Router();
 const verificationLimiter = rateLimit({
@@ -53,20 +55,18 @@ async function loadCurrentUser(req) {
 
 async function addContentProgress(contents, userId) {
   if (!contents.length) return contents;
-  const [tasks, records] = await Promise.all([
-    Task.find({ isActive: true, type: { $in: ['partner', 'verification', 'content-unlock'] } }).select('type appliesToAllContents selectedContentIds').lean(),
-    TaskCompletion.find({ userId, status: 'completed' }).select('taskId contentId').lean()
-  ]);
+  const records = await ContentTaskProgress.find({
+    userId,
+    contentId: { $in: contents.map((content) => content._id) }
+  }).select('contentId completedSlots').lean();
   return contents.map((content) => {
-    const applicableTasks = tasks.filter((task) => task.appliesToAllContents || task.selectedContentIds.some((id) => String(id) === String(content._id)));
-    const completedTaskIds = new Set(records.filter((record) =>
-      applicableTasks.some((task) => String(task._id) === String(record.taskId)
-        && (task.type !== 'content-unlock' && task.appliesToAllContents ? !record.contentId : String(record.contentId) === String(content._id)))
-    ).map((record) => String(record.taskId)));
-    const total = content.requiredTaskCount > 0 ? content.requiredTaskCount : applicableTasks.length;
-    const completed = applicableTasks.filter((task) => completedTaskIds.has(String(task._id))).length;
-    const configuredCountAvailable = content.requiredTaskCount === 0 || applicableTasks.length >= content.requiredTaskCount;
-    return { ...content, taskProgress: { completed, total }, isUnlocked: configuredCountAvailable && completed >= total };
+    const progress = records.find((record) => String(record.contentId) === String(content._id));
+    const completed = progress?.completedSlots.length || 0;
+    return {
+      ...content,
+      taskProgress: { completed, total: CONTENT_TASK_COUNT },
+      isUnlocked: completed >= CONTENT_TASK_COUNT
+    };
   });
 }
 
@@ -120,6 +120,73 @@ router.post('/api/telegram/auth', asyncRoute(async (req, res) => {
   req.session.userId = user._id.toString();
   req.session.csrfToken = crypto.randomBytes(32).toString('hex');
   res.json({ ok: true, csrfToken: req.session.csrfToken, redirect: '/' });
+}));
+
+router.post('/api/contents/:id/tasks/:slot/start', requireUser, requireCsrf, [
+  param('id').isMongoId(),
+  param('slot').isInt({ min: 0, max: CONTENT_TASK_COUNT - 1 }).toInt()
+], validationError, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const content = await Content.findOne({ _id: req.params.id, isActive: true }).select('taskLinks');
+  if (!content) return res.status(404).json({ error: 'Content not found.' });
+
+  const slot = req.params.slot;
+  let progress;
+  try {
+    progress = await ContentTaskProgress.findOneAndUpdate(
+      { userId: user._id, contentId: content._id },
+      { $addToSet: { startedSlots: slot }, $setOnInsert: { userId: user._id, contentId: content._id } },
+      { upsert: true, new: true, runValidators: true }
+    );
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    progress = await ContentTaskProgress.findOne({ userId: user._id, contentId: content._id }).select('startedSlots completedSlots').lean();
+  }
+  if (progress?.completedSlots.includes(slot)) return res.status(409).json({ error: 'This task is already completed.' });
+  if (!progress?.startedSlots.includes(slot)) {
+    await ActivityLog.create({
+      actorId: user._id, actorType: 'user', action: 'content_task_started',
+      targetType: 'content', targetId: String(content._id), details: { slot: slot + 1 }
+    });
+  }
+  res.json({ ok: true, taskLink: getContentTaskLinks(content)[slot] });
+}));
+
+router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, verificationLimiter, [
+  param('id').isMongoId(),
+  param('slot').isInt({ min: 0, max: CONTENT_TASK_COUNT - 1 }).toInt()
+], validationError, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const content = await Content.findOne({ _id: req.params.id, isActive: true }).select('videoUrl');
+  if (!content) return res.status(404).json({ error: 'Content not found.' });
+
+  const slot = req.params.slot;
+  const progress = await ContentTaskProgress.findOneAndUpdate(
+    {
+      userId: user._id,
+      contentId: content._id,
+      startedSlots: slot,
+      completedSlots: { $ne: slot }
+    },
+    { $addToSet: { completedSlots: slot } },
+    { new: true, runValidators: true }
+  );
+  if (!progress) {
+    const existing = await ContentTaskProgress.exists({ userId: user._id, contentId: content._id, completedSlots: slot });
+    return res.status(existing ? 409 : 400).json({
+      error: existing ? 'This task is already completed.' : 'Start this task before claiming it.'
+    });
+  }
+  await ActivityLog.create({
+    actorId: user._id, actorType: 'user', action: 'content_task_claimed',
+    targetType: 'content', targetId: String(content._id), details: { slot: slot + 1 }
+  });
+  res.json({
+    ok: true,
+    completed: progress.completedSlots.length,
+    total: CONTENT_TASK_COUNT,
+    ...(progress.completedSlots.length === CONTENT_TASK_COUNT ? { videoUrl: content.videoUrl } : {})
+  });
 }));
 
 router.get('/api/me', requireUser, asyncRoute(async (req, res) => {
@@ -390,23 +457,17 @@ router.get('/content/:id', requireUser, [param('id').isMongoId()], validationErr
   const user = await loadCurrentUser(req);
   const content = await Content.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $inc: { totalViews: 1 } }, { new: true }).lean();
   if (!content) return res.status(404).render('errors/404', { title: 'Content not found' });
-  const tasks = await Task.find({
-    isActive: true,
-    type: { $in: ['partner', 'verification', 'content-unlock'] },
-    $or: [{ appliesToAllContents: true }, { selectedContentIds: content._id }]
-  }).select('-verificationCode').lean();
-  const taskRecords = await TaskCompletion.find({
-    userId: user._id,
-    $or: [{ contentId: content._id }, { contentId: null }]
-  }).select('taskId status contentId').lean();
-  const taskStates = new Map(taskRecords.map((entry) => [String(entry.taskId), entry.status]));
-  const completedIds = new Set(taskRecords.filter((entry) => entry.status === 'completed').map((entry) => String(entry.taskId)));
-  const completionTarget = content.requiredTaskCount > 0 ? content.requiredTaskCount : tasks.length;
-  const completedTaskCount = tasks.filter((task) => completedIds.has(String(task._id))).length;
-  const configuredCountAvailable = content.requiredTaskCount === 0 || tasks.length >= content.requiredTaskCount;
-  const allDone = configuredCountAvailable && completedTaskCount >= completionTarget;
-  const embedUrl = allDone && env.videoEmbedServerUrl ? `${env.videoEmbedServerUrl.replace(/\/$/, '')}/?url=${encodeURIComponent(content.videoUrl)}` : '';
-  res.render('user/content', { title: content.title, user, content, tasks: tasks.map((task) => ({ ...task, status: taskStates.get(String(task._id)) || '', completed: completedIds.has(String(task._id)) })), allDone, embedUrl });
+  const progress = await ContentTaskProgress.findOne({ userId: user._id, contentId: content._id }).select('startedSlots completedSlots').lean();
+  const startedSlots = new Set(progress?.startedSlots || []);
+  const completedSlots = new Set(progress?.completedSlots || []);
+  const tasks = getContentTaskLinks(content).map((taskLink, slot) => ({
+    slot,
+    taskLink,
+    started: startedSlots.has(slot),
+    completed: completedSlots.has(slot)
+  }));
+  const allDone = completedSlots.size === CONTENT_TASK_COUNT;
+  res.render('user/content', { title: content.title, user, content, tasks, allDone, completedTaskCount: completedSlots.size });
 }));
 
 router.locals = { milestones };

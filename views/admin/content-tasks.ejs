@@ -1,0 +1,23 @@
+<%- include('layout-head', { title, csrfToken }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { currentPath: '/admin/content-tasks' }) %>
+  <main class="admin-main">
+    <header class="admin-topbar"><div><p class="eyebrow">MANAGEMENT</p><h1><%= title %></h1></div><span class="admin-user"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> <%= adminUsername %></span></header>
+    <section class="card admin-panel">
+      <p class="muted">Set an optional destination for each task. Leave a field blank to use the default task link: <a href="<%= defaultTaskLink %>" target="_blank" rel="noopener noreferrer"><%= defaultTaskLink %></a></p>
+      <% contents.forEach((content) => { %>
+        <details class="create-details">
+          <summary><%= content.title %></summary>
+          <form method="post" action="/admin/content-tasks/<%= content._id %>" class="admin-form-grid">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% for (let slot = 0; slot < 5; slot++) { %>
+              <label>Task <%= slot + 1 %> URL<input name="taskLink<%= slot + 1 %>" type="url" value="<%= content.taskLinks?.[slot] || '' %>" placeholder="Use default link"></label>
+            <% } %>
+            <button class="button button-primary">Save task links</button>
+          </form>
+        </details>
+      <% }) %>
+    </section>
+  </main>
+</div>
+<%- include('layout-foot') %>

@@ -2,6 +2,7 @@ require('../config/env');
 const mongoose = require('mongoose');
 const connectDatabase = require('../config/db');
 const Content = require('../models/Content');
+const { CONTENT_TASK_COUNT } = require('../services/contentTasks');
 
 const starterContents = [
   { title: 'Advanced Python Tutorial for Beginners', imageUrl: 'https://picsum.photos/seed/py1/300/200', videoUrl: 'https://youtube.com/watch?v=sample01', date: '2026-01-10', totalViews: 125000 },
@@ -28,7 +29,7 @@ const starterContents = [
   ...content,
   seedKey: `starter-viral-link-${String(index + 1).padStart(2, '0')}`,
   date: new Date(`${content.date}T00:00:00.000Z`),
-  requiredTaskCount: 0,
+  requiredTaskCount: CONTENT_TASK_COUNT,
   isActive: true,
   isTrending: contents
     .slice()
