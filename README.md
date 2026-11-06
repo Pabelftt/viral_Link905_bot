@@ -18,13 +18,13 @@ Copy-Item .env.example .env
 
 Set `MONGODB_URI`, `SESSION_SECRET`, bot settings and admin settings in `.env`. Keep `.env` private; it is ignored by Git. For local MongoDB, start `mongod` with `--replSet rs0`, then run `rs.initiate()` once in `mongosh`; the example URI expects that replica set. Generate a long random session secret, for example with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 
-Generate the admin password hash in an interactive terminal:
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` in `.env` or Render's environment settings. Despite the legacy variable name, the value may be a plain-text password. A bcrypt hash is also accepted; generate one in an interactive terminal if preferred:
 
 ```powershell
 npm run create-admin-hash
 ```
 
-Paste the printed bcrypt hash into `ADMIN_PASSWORD_HASH` and configure `ADMIN_USERNAME`. Do not put an unhashed admin password in `.env`.
+For better security, use a unique, strong password and keep all credentials private. The login endpoint is rate-limited.
 
 ## Telegram setup
 

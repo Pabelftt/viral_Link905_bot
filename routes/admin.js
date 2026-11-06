@@ -1,7 +1,7 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const { body, param, query, validationResult } = require('express-validator');
 const env = require('../config/env');
+const { verifyAdminPassword } = require('../services/adminPassword');
 const User = require('../models/User');
 const Content = require('../models/Content');
 const Task = require('../models/Task');
@@ -74,7 +74,7 @@ router.post('/admin/login', loginLimiter, requireCsrf, [
   body('password').isString().isLength({ min: 1, max: 200 })
 ], validate, asyncRoute(async (req, res) => {
   const usernameMatches = req.body.username === env.adminUsername;
-  const passwordMatches = env.adminPasswordHash ? await bcrypt.compare(req.body.password, env.adminPasswordHash) : false;
+  const passwordMatches = await verifyAdminPassword(req.body.password, env.adminPasswordHash);
   if (!usernameMatches || !passwordMatches) {
     return res.status(401).render('admin/login', { title: 'Admin login', error: 'Invalid username or password.' });
   }

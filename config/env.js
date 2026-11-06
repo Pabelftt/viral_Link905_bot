@@ -21,9 +21,6 @@ if (process.env.NODE_ENV === 'production') {
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(process.env.TELEGRAM_WEBHOOK_SECRET || '')) {
     throw new Error('TELEGRAM_WEBHOOK_SECRET must contain only letters, numbers, underscores, and hyphens.');
   }
-  if (!/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(process.env.ADMIN_PASSWORD_HASH || '')) {
-    throw new Error('ADMIN_PASSWORD_HASH must be a valid bcrypt hash.');
-  }
 }
 
 const positiveNumber = (name, fallback) => {
