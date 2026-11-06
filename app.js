@@ -14,11 +14,13 @@ const { notFound, errorHandler } = require('./middleware/errors');
 const { launchBot, registerWebhookRoute } = require('./services/telegramBot');
 
 const app = express();
-let embedOrigin = '';
-try {
-  embedOrigin = new URL(env.videoEmbedServerUrl).origin;
-} catch (error) {
-  throw new Error('VIDEO_EMBED_SERVER_URL must be an absolute URL.');
+let embedOrigin;
+if (env.videoEmbedServerUrl) {
+  try {
+    embedOrigin = new URL(env.videoEmbedServerUrl).origin;
+  } catch {
+    throw new Error('VIDEO_EMBED_SERVER_URL must be an absolute URL.');
+  }
 }
 app.disable('x-powered-by');
 if (env.isProduction) app.set('trust proxy', 1);
@@ -33,7 +35,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com', 'data:'],
       imgSrc: ["'self'", 'https:', 'data:'],
-      frameSrc: ["'self'", embedOrigin, 'https://www.youtube.com', 'https://www.youtube-nocookie.com'],
+      frameSrc: ["'self'", ...(embedOrigin ? [embedOrigin] : []), 'https://www.youtube.com', 'https://www.youtube-nocookie.com'],
       connectSrc: ["'self'", 'https://telegram.org', 'https://*.telegram.org'],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: env.isProduction ? [] : null

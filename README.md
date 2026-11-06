@@ -55,7 +55,7 @@ npm run seed
 ## Deployment and security
 
 - Use HTTPS, a managed MongoDB deployment, a unique secret per environment, and production `NODE_ENV`.
-- On Render, create a **Web Service** from this repository and select **Docker** as the runtime. Render supplies `PORT`; the app listens on that port automatically. Set the environment variables listed in `.env.example` in the Render dashboard, including `VIDEO_EMBED_SERVER_URL`, and set `WEB_APP_URL` to the final HTTPS Render URL. Never upload `.env`.
+- On Render, create a **Web Service** from this repository and select **Docker** as the runtime. Render supplies `PORT`; the app listens on that port automatically. Set the required environment variables listed in `.env.example` in the Render dashboard and set `WEB_APP_URL` to the final HTTPS Render URL. `VIDEO_EMBED_SERVER_URL` is optional; if omitted, the app still starts but unlocked videos are not embedded. Never upload `.env`.
 - Use a MongoDB replica-set connection string that allows connections from Render. After deployment, configure the Telegram bot's Mini App URL to match `WEB_APP_URL`.
 - Restrict database network access and rotate bot/session/webhook secrets if exposed.
 - Configure MongoDB backups and monitor application and delivery logs.
@@ -63,7 +63,7 @@ npm run seed
 - Withdrawal requests reserve funds immediately; rejecting a request releases the reserved amount. Approvals do not debit the user's balance a second time.
 - Task submissions are pending until an administrator approves them; this avoids trusting client-side claims for external partner actions. Verification codes are checked server-side.
 - Broadcast delivery is rate-paced and records each send result. Failed sends are retained in the delivery log for admin review.
-- Configure `VIDEO_EMBED_SERVER_URL` only to a trusted embed service and use HTTPS.
+- If configured, set `VIDEO_EMBED_SERVER_URL` only to a trusted embed service and use HTTPS. Leaving it unset disables embedded videos without preventing startup.
 - All monetary actions and task/referral/withdrawal changes are recorded in `activityLogs`.
 
 ## Configuration
