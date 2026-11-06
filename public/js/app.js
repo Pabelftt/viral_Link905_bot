@@ -62,14 +62,11 @@
   }
 
   async function authenticate() {
+    const status = document.querySelector('[data-auth-status]');
     if (!tg?.initData) {
-      notify('Open this app from Telegram to sign in.', 'error');
-      const status = document.querySelector('[data-auth-status]');
-      if (status) status.textContent = 'Telegram authentication is available when opened inside Telegram.';
+      if (status) status.textContent = 'Open this app inside Telegram to continue.';
       return;
     }
-    const button = document.querySelector('[data-telegram-login]');
-    if (button) button.disabled = true;
     try {
       const result = await api('/api/telegram/auth', {
         method: 'POST',
@@ -78,11 +75,11 @@
       });
       location.assign(result.redirect || '/');
     } catch (error) {
+      if (status) status.textContent = `Telegram sign-in failed: ${error.message}`;
       notify(error.message, 'error');
-      if (button) button.disabled = false;
     }
   }
-  document.querySelector('[data-telegram-login]')?.addEventListener('click', authenticate);
+  if (document.querySelector('[data-auth-status]')) authenticate();
 
   async function loadContents(page = 1, append = false) {
     const list = document.getElementById('content-list');
