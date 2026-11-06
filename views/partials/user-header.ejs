@@ -1,0 +1,14 @@
+<header class="user-header">
+  <a class="balance-card" href="/profile" aria-label="Open wallet and profile">
+    <span class="balance-icon"><i class="fa-solid fa-wallet" aria-hidden="true"></i></span>
+    <span class="balance-copy"><small>MY BALANCE</small><strong>৳<%= Number(user?.balance || 0).toFixed(2) %></strong></span>
+    <span class="coin-icon"><i class="fa-solid fa-coins" aria-hidden="true"></i></span>
+  </a>
+  <% if (user) { %>
+    <a class="profile-shortcut" href="/profile" aria-label="Open profile">
+      <% if (user.photoUrl) { %><img src="<%= user.photoUrl %>" alt="" referrerpolicy="no-referrer"><% } else { %><span class="avatar-initial"><%= (user.firstName || 'U').slice(0, 1).toUpperCase() %></span><% } %>
+      <span><strong><%= user.firstName %></strong><small>@<%= user.username || 'telegram user' %></small></span>
+      <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+    </a>
+  <% } %>
+</header>
