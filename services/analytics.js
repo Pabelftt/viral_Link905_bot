@@ -1,6 +1,8 @@
 const ANALYTICS_EVENT_TYPES = ['app_open', 'page_view', 'page_time'];
 const ANALYTICS_PERIODS = [7, 30, 90];
 const ALLOWED_ANALYTICS_PATHS = new Set(['/', '/earn', '/refer', '/leaderboard', '/profile', '/privacy']);
+const ANALYTICS_CACHE_TTL_MS = 10000;
+const analyticsCache = new Map();
 
 function normalizeAnalyticsPath(value) {
   if (typeof value !== 'string' || value.length > 200 || !value.startsWith('/') || /[?#\\%]/.test(value)) return null;
@@ -156,4 +158,27 @@ async function loadAnalytics(AnalyticsDaily, User, Content, days) {
   };
 }
 
-module.exports = { ANALYTICS_EVENT_TYPES, ANALYTICS_PERIODS, normalizeAnalyticsPath, getAnalyticsPage, formatDuration, loadAnalytics };
+function getCachedAnalytics(AnalyticsDaily, User, Content, days) {
+  const cached = analyticsCache.get(days);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+  const entry = { expiresAt: Number.POSITIVE_INFINITY, promise: null };
+  entry.promise = loadAnalytics(AnalyticsDaily, User, Content, days).then((analytics) => {
+    entry.expiresAt = Date.now() + ANALYTICS_CACHE_TTL_MS;
+    return analytics;
+  }).catch((error) => {
+    analyticsCache.delete(days);
+    throw error;
+  });
+  analyticsCache.set(days, entry);
+  return entry.promise;
+}
+
+module.exports = {
+  ANALYTICS_EVENT_TYPES,
+  ANALYTICS_PERIODS,
+  normalizeAnalyticsPath,
+  getAnalyticsPage,
+  formatDuration,
+  loadAnalytics,
+  getCachedAnalytics
+};

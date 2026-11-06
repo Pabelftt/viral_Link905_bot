@@ -19,7 +19,7 @@ const { createBroadcast } = require('../services/broadcastService');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
 const { CONTENT_TASK_COUNT, DEFAULT_CONTENT_TASK_LINK } = require('../services/contentTasks');
 const { DEFAULT_VIDEO_REWARD_LINK } = require('../services/dailyVideoReward');
-const { ANALYTICS_PERIODS, formatDuration, loadAnalytics } = require('../services/analytics');
+const { ANALYTICS_PERIODS, formatDuration, getCachedAnalytics } = require('../services/analytics');
 const AnalyticsDaily = require('../models/AnalyticsDaily');
 
 const router = express.Router();
@@ -174,7 +174,7 @@ router.get('/admin/analytics', [
   query('days').optional().isInt().toInt().custom((value) => ANALYTICS_PERIODS.includes(value))
 ], validate, asyncRoute(async (req, res) => {
   const days = Number(req.query.days || 30);
-  const analytics = await loadAnalytics(AnalyticsDaily, User, Content, days);
+  const analytics = await getCachedAnalytics(AnalyticsDaily, User, Content, days);
   res.render('admin/analytics', {
     title: 'Analytics',
     analytics,
@@ -182,6 +182,58 @@ router.get('/admin/analytics', [
     csrfToken: req.session.csrfToken
   });
 }));
+
+router.get('/admin/analytics/stream', [
+  query('days').optional().isInt().toInt().custom((value) => ANALYTICS_PERIODS.includes(value))
+], validate, (req, res) => {
+  const days = Number(req.query.days || 30);
+  let closed = false;
+  let refreshing = false;
+  const heartbeat = setInterval(() => {
+    if (!closed && !res.writableEnded) res.write(': keep-alive\n\n');
+  }, 20000);
+  const refresh = async () => {
+    if (closed || refreshing || res.writableLength > 1024 * 64) return;
+    refreshing = true;
+    try {
+      const analytics = await getCachedAnalytics(AnalyticsDaily, User, Content, days);
+      if (closed || res.writableEnded) {
+        refreshing = false;
+        return;
+      }
+      res.render('admin/analytics-content', { analytics, formatDuration }, (error, html) => {
+        refreshing = false;
+        if (error) {
+          console.error('Unable to render live analytics update:', error);
+          if (!closed && !res.writableEnded) res.write('event: analytics-error\ndata: {}\n\n');
+          return;
+        }
+        if (!closed && !res.writableEnded) {
+          res.write(`event: analytics\ndata: ${JSON.stringify({ html, updatedAt: new Date().toISOString() })}\n\n`);
+        }
+      });
+    } catch (error) {
+      refreshing = false;
+      console.error('Unable to load live analytics update:', error);
+      if (!closed && !res.writableEnded) res.write('event: analytics-error\ndata: {}\n\n');
+    }
+  };
+  res.status(200).set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders();
+  res.write('retry: 5000\n\n');
+  refresh();
+  const refreshTimer = setInterval(refresh, 15000);
+  res.on('close', () => {
+    closed = true;
+    clearInterval(heartbeat);
+    clearInterval(refreshTimer);
+  });
+});
 
 router.get('/admin/users', asyncRoute(async (req, res) => {
   const search = String(req.query.q || '').slice(0, 100);

@@ -3,6 +3,7 @@
   let currentUrl = location.href;
   const analyticsSessionId = [...crypto.getRandomValues(new Uint8Array(16))]
     .map((value) => value.toString(16).padStart(2, '0')).join('');
+  let analyticsQueue = Promise.resolve();
   let analyticsPath = null;
   let analyticsSegmentStartedAt = null;
   let analyticsOpened = false;
@@ -10,13 +11,13 @@
   function sendAnalyticsEvent(type, path, durationSeconds = 0) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const pathname = new URL(path, location.origin).pathname;
-    fetch('/api/analytics/event', {
+    analyticsQueue = analyticsQueue.then(() => fetch('/api/analytics/event', {
       method: 'POST',
       credentials: 'same-origin',
       keepalive: true,
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify({ sessionId: analyticsSessionId, type, path: pathname, durationSeconds })
-    }).then((response) => {
+    })).then((response) => {
       if (!response.ok) console.error(`Analytics event failed (${response.status}).`);
     }).catch((error) => console.error('Unable to record analytics event:', error));
   }
@@ -28,6 +29,7 @@
     }
     analyticsSegmentStartedAt = null;
     if (endPage) analyticsPath = null;
+    else if (analyticsPath && document.visibilityState === 'visible') analyticsSegmentStartedAt = Date.now();
   }
 
   function startAnalyticsPage(path) {

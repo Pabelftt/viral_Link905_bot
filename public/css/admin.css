@@ -40,6 +40,8 @@
 .analytics-tables { align-items: start; }
 .analytics-tables .admin-panel { overflow: hidden; }
 .analytics-privacy { margin: 15px 0; font-size: 11px; }
+.analytics-live-status { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin: 10px 0 0; color: var(--success); font-size: 10px; }
+.analytics-live-status.error { color: var(--danger); }
 .stat-icon { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 14px; }
 .stat-icon.purple { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--surface)); }
 .stat-icon.green { color: var(--success); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }

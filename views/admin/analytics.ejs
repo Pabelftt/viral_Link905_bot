@@ -3,34 +3,8 @@
   <%- include('sidebar', { currentPath: '/admin/analytics' }) %>
   <main class="admin-main">
     <header class="admin-topbar"><div><p class="eyebrow">TRAFFIC & ENGAGEMENT</p><h1>Analytics</h1></div><span class="admin-user"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> First-party report</span></header>
-    <section class="analytics-period" aria-label="Analytics reporting period"><span>Reporting period</span><% [7, 30, 90].forEach((days) => { %><a class="button button-small <%= analytics.days === days ? 'button-primary' : 'button-muted' %>" href="/admin/analytics?days=<%= days %>">Last <%= days %> days</a><% }) %></section>
-    <section class="admin-stat-grid analytics-stat-grid">
-      <% const cards = [['App opens', analytics.metrics.appOpens, 'fa-arrow-up-right-from-square', 'purple'], ['Unique visitors', analytics.metrics.visitors, 'fa-users', 'blue'], ['Page views', analytics.metrics.pageViews, 'fa-eye', 'green'], ['Avg. session time', formatDuration(analytics.metrics.averageSessionSeconds), 'fa-clock', 'orange'], ['Sessions', analytics.metrics.sessions, 'fa-mobile-screen', 'purple'], ['Total time in app', formatDuration(analytics.metrics.durationSeconds), 'fa-hourglass-half', 'green']]; cards.forEach((card) => { %><article class="card admin-stat"><span class="stat-icon <%= card[3] %>"><i class="fa-solid <%= card[2] %>" aria-hidden="true"></i></span><div><small><%= card[0] %></small><strong><%= card[1] %></strong></div></article><% }) %>
-    </section>
-    <section class="card admin-panel analytics-trend">
-      <div class="admin-panel-heading"><div><h2>App opens & page views</h2><small>By day · UTC</small></div><span class="analytics-legend"><i class="legend-open"></i> Opens <i class="legend-view"></i> Views</span></div>
-      <% const maxTrend = Math.max(1, ...analytics.daily.map((day) => day.pageViews)); %>
-      <div class="analytics-chart" role="img" aria-label="Daily app opens and page views for the last <%= analytics.days %> days">
-        <% analytics.daily.forEach((day) => { %><div class="analytics-day" title="<%= day.date.toISOString().slice(0, 10) %>: <%= day.appOpens %> opens, <%= day.pageViews %> page views"><div class="analytics-bars"><span class="analytics-bar open-bar" style="height:<%= Math.max(day.appOpens ? 4 : 0, Math.round(day.appOpens / maxTrend * 100)) %>%"></span><span class="analytics-bar view-bar" style="height:<%= Math.max(day.pageViews ? 4 : 0, Math.round(day.pageViews / maxTrend * 100)) %>%"></span></div><small><%= day.label %></small></div><% }) %>
-      </div>
-      <% if (!analytics.metrics.appOpens) { %><p class="muted analytics-empty">No analytics recorded in this period yet. New activity will appear here as users browse the app.</p><% } %>
-    </section>
-    <div class="admin-two-col analytics-tables">
-      <section class="card admin-panel"><div class="admin-panel-heading"><h2>Most visited pages</h2></div><div class="table-wrap"><table><thead><tr><th>Page</th><th>Views</th><th>Total time</th><th>Avg. time</th></tr></thead><tbody>
-        <% if (analytics.pages.length) { analytics.pages.forEach((page) => { %><tr><td><strong><%= page._id %></strong></td><td><%= page.pageViews.toLocaleString() %></td><td><%= formatDuration(page.durationSeconds) %></td><td><%= formatDuration(page.averageSeconds) %></td></tr><% }) } else { %><tr><td colspan="4" class="muted">No page views in this period.</td></tr><% } %>
-      </tbody></table></div></section>
-      <section class="card admin-panel"><div class="admin-panel-heading"><h2>Visitor engagement</h2><small>Top 50 by time spent</small></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Opens</th><th>Views</th><th>Time</th><th>Last seen</th></tr></thead><tbody>
-        <% if (analytics.visitors.length) { analytics.visitors.forEach((visitor) => { %><tr><td><a href="/admin/users/<%= visitor._id %>"><strong><%= [visitor.user.firstName, visitor.user.lastName].filter(Boolean).join(' ') %></strong></a><% if (visitor.user.username) { %><small>@<%= visitor.user.username %></small><% } %></td><td><%= visitor.appOpens.toLocaleString() %></td><td><%= visitor.pageViews.toLocaleString() %></td><td><%= formatDuration(visitor.durationSeconds) %></td><td><%= new Date(visitor.lastActiveAt).toLocaleString() %></td></tr><% }) } else { %><tr><td colspan="5" class="muted">No visitor activity in this period.</td></tr><% } %>
-      </tbody></table></div></section>
-    </div>
-    <div class="admin-two-col analytics-tables">
-      <section class="card admin-panel"><div class="admin-panel-heading"><h2>Top content</h2><small>Most viewed content links</small></div><div class="table-wrap"><table><thead><tr><th>Content</th><th>Views</th><th>Time</th></tr></thead><tbody>
-        <% if (analytics.topContents.length) { analytics.topContents.forEach((item) => { %><tr><td><strong><%= item.content.title %></strong></td><td><%= item.pageViews.toLocaleString() %></td><td><%= formatDuration(item.durationSeconds) %></td></tr><% }) } else { %><tr><td colspan="3" class="muted">No content views in this period.</td></tr><% } %>
-      </tbody></table></div></section>
-      <section class="card admin-panel"><div class="admin-panel-heading"><h2>User page activity</h2><small>Top 100 page-user pairs by time</small></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Page</th><th>Views</th><th>Time</th></tr></thead><tbody>
-        <% if (analytics.visitorPages.length) { analytics.visitorPages.forEach((item) => { %><tr><td><strong><%= [item.user.firstName, item.user.lastName].filter(Boolean).join(' ') %></strong><% if (item.user.username) { %><small>@<%= item.user.username %></small><% } %></td><td><strong><%= item.content?.title || item.path %></strong><% if (item.content) { %><small><%= item.path %></small><% } %></td><td><%= item.pageViews.toLocaleString() %></td><td><%= formatDuration(item.durationSeconds) %></td></tr><% }) } else { %><tr><td colspan="4" class="muted">No page activity in this period.</td></tr><% } %>
-      </tbody></table></div></section>
-    </div>
+    <div data-analytics-live-container><%- include('analytics-content', { analytics, formatDuration }) %></div>
+    <p class="analytics-live-status" data-analytics-live-status aria-live="polite"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Connecting to live analytics…</p>
     <p class="analytics-privacy muted">First-party analytics only. Page activity and time spent are retained for 180 days; IP addresses, device fingerprints, and full URLs are not stored. Content is linked internally for reporting; raw identifiers are not displayed.</p>
   </main>
 </div>

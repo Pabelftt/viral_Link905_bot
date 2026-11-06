@@ -1,5 +1,37 @@
 (() => {
   const notify = window.appNotify || (() => {});
+  const analyticsContainer = document.querySelector('[data-analytics-live-container]');
+  const analyticsLiveStatus = document.querySelector('[data-analytics-live-status]');
+  if (analyticsContainer && analyticsLiveStatus && window.EventSource) {
+    const days = new URLSearchParams(location.search).get('days') || '30';
+    const stream = new EventSource(`/admin/analytics/stream?days=${encodeURIComponent(days)}`);
+    stream.addEventListener('analytics', (event) => {
+      try {
+        const update = JSON.parse(event.data);
+        analyticsContainer.innerHTML = update.html;
+        const updated = new Date(update.updatedAt);
+        analyticsLiveStatus.textContent = `Live · updated ${updated.toLocaleTimeString()}`;
+        analyticsLiveStatus.classList.remove('error');
+      } catch (error) {
+        console.error('Unable to apply live analytics update:', error);
+        analyticsLiveStatus.textContent = 'Unable to display live analytics update.';
+        analyticsLiveStatus.classList.add('error');
+      }
+    });
+    stream.addEventListener('analytics-error', () => {
+      analyticsLiveStatus.textContent = 'Live update failed; retrying…';
+      analyticsLiveStatus.classList.add('error');
+    });
+    stream.addEventListener('error', () => {
+      if (stream.readyState === EventSource.CONNECTING) {
+        analyticsLiveStatus.textContent = 'Reconnecting to live analytics…';
+        analyticsLiveStatus.classList.remove('error');
+      } else {
+        analyticsLiveStatus.textContent = 'Live analytics connection unavailable.';
+        analyticsLiveStatus.classList.add('error');
+      }
+    });
+  }
   const presencePanel = document.querySelector('[data-presence-panel]');
   if (presencePanel) {
     const activeCount = document.querySelector('[data-active-user-count]');

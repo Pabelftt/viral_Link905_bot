@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatDuration, getAnalyticsPage, loadAnalytics, normalizeAnalyticsPath } = require('../services/analytics');
+const { formatDuration, getAnalyticsPage, getCachedAnalytics, normalizeAnalyticsPath } = require('../services/analytics');
 
 test('analytics paths include known pages and hide content identifiers', () => {
   assert.equal(normalizeAnalyticsPath('/'), '/');
@@ -53,7 +53,8 @@ test('analytics report aggregates usage, page time, sessions, users, and content
   const makeQuery = (result) => ({ select() { return this; }, lean: async () => result });
   const User = { find: () => makeQuery([{ _id: userId, firstName: 'Test', lastName: '', username: 'test' }]) };
   const Content = { find: () => makeQuery([{ _id: contentId, title: 'Trending link' }]) };
-  const report = await loadAnalytics(AnalyticsDaily, User, Content, 7);
+  const report = await getCachedAnalytics(AnalyticsDaily, User, Content, 7);
+  assert.equal(await getCachedAnalytics(AnalyticsDaily, User, Content, 7), report);
   assert.equal(report.metrics.appOpens, 5);
   assert.equal(report.metrics.sessions, 3);
   assert.equal(report.metrics.visitors, 2);

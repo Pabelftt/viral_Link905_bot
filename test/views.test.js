@@ -169,6 +169,8 @@ test('admin analytics report renders key usage and page metrics', async () => {
   assert.match(rendered, /Trending link/);
   assert.match(rendered, /test_user/);
   assert.match(rendered, /retained for 180 days/);
+  assert.match(rendered, /data-analytics-live-container/);
+  assert.match(rendered, /data-analytics-live-status/);
 });
 
 test('privacy page explains first-party usage analytics and retention', async () => {
