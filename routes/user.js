@@ -19,9 +19,15 @@ const { requireUser } = require('../middleware/auth');
 const { requireCsrf } = require('../middleware/csrf');
 const { verifyTelegramInitData } = require('../services/telegramAuth');
 const { withMongoTransaction } = require('../utils/mongoTransaction');
-const { CONTENT_TASK_COUNT, CONTENT_UNLOCK_DURATION_MS, getContentTaskLinks } = require('../services/contentTasks');
+const {
+  CONTENT_TASK_COUNT,
+  CONTENT_UNLOCK_DURATION_MS,
+  CONTENT_UNLOCK_REWARD_AMOUNT,
+  getContentTaskLinks
+} = require('../services/contentTasks');
 const { VIDEO_REWARD_AMOUNT, VIDEO_WATCH_SECONDS, getVideoRewardLinks } = require('../services/dailyVideoReward');
 const { loadWithdrawalStatus } = require('../services/withdrawalRequirements');
+const { loadTopIncome, loadTopReferrals } = require('../services/leaderboard');
 
 const router = express.Router();
 const CONTENT_PAGE_SIZE = 20;
@@ -205,42 +211,69 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
   if (!content) return res.status(404).json({ error: 'Content not found.' });
 
   const slot = req.params.slot;
-  const progress = await ContentTaskProgress.findOneAndUpdate(
-    {
-      userId: user._id,
-      contentId: content._id,
-      startedSlots: slot,
-      completedSlots: { $ne: slot }
-    },
-    { $addToSet: { completedSlots: slot } },
-    { new: true, runValidators: true }
-  );
-  if (!progress) {
-    const existing = await ContentTaskProgress.exists({ userId: user._id, contentId: content._id, completedSlots: slot });
-    return res.status(existing ? 409 : 400).json({
-      error: existing ? 'This task is already completed.' : 'Start this task before claiming it.'
-    });
-  }
-  await ActivityLog.create({
-    actorId: user._id, actorType: 'user', action: 'content_task_claimed',
-    targetType: 'content', targetId: String(content._id), details: { slot: slot + 1 }
-  });
-  let unlockExpiresAt = null;
-  if (progress.completedSlots.length === CONTENT_TASK_COUNT) {
-    const unlockedAt = new Date();
-    unlockExpiresAt = new Date(unlockedAt.getTime() + CONTENT_UNLOCK_DURATION_MS);
-    const unlocked = await ContentTaskProgress.findOneAndUpdate(
-      { _id: progress._id, completedSlots: { $size: CONTENT_TASK_COUNT }, unlockExpiresAt: null },
-      { $set: { unlockedAt, unlockExpiresAt, unlockCount: 1 } },
-      { new: true }
+  const claim = await withMongoTransaction(async (session) => {
+    const progress = await ContentTaskProgress.findOneAndUpdate(
+      {
+        userId: user._id,
+        contentId: content._id,
+        startedSlots: slot,
+        completedSlots: { $ne: slot }
+      },
+      { $addToSet: { completedSlots: slot } },
+      { new: true, runValidators: true, session }
     );
-    if (!unlocked) throw Object.assign(new Error('Unable to unlock this content. Please refresh and try again.'), { status: 409 });
-  }
+    if (!progress) {
+      const alreadyCompleted = await ContentTaskProgress.exists({
+        userId: user._id,
+        contentId: content._id,
+        completedSlots: slot
+      }).session(session);
+      return { error: alreadyCompleted ? 'This task is already completed.' : 'Start this task before claiming it.', status: alreadyCompleted ? 409 : 400 };
+    }
+
+    await ActivityLog.create([{
+      actorId: user._id, actorType: 'user', action: 'content_task_claimed',
+      targetType: 'content', targetId: String(content._id), details: { slot: slot + 1 }
+    }], { session });
+
+    let unlockExpiresAt = null;
+    let balance = null;
+    if (progress.completedSlots.length === CONTENT_TASK_COUNT) {
+      const unlockedAt = new Date();
+      unlockExpiresAt = new Date(unlockedAt.getTime() + CONTENT_UNLOCK_DURATION_MS);
+      const unlocked = await ContentTaskProgress.findOneAndUpdate(
+        { _id: progress._id, completedSlots: { $size: CONTENT_TASK_COUNT }, unlockExpiresAt: null },
+        { $set: { unlockedAt, unlockExpiresAt }, $inc: { unlockCount: 1 } },
+        { new: true, session }
+      );
+      if (!unlocked) throw Object.assign(new Error('Unable to unlock this content. Please refresh and try again.'), { status: 409 });
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: user._id, isActive: true, isSuspended: false },
+        { $inc: { balance: CONTENT_UNLOCK_REWARD_AMOUNT } },
+        { new: true, session }
+      ).select('balance').lean();
+      if (!updatedUser) throw Object.assign(new Error('Your account is unavailable.'), { status: 403 });
+      balance = updatedUser.balance;
+      await ActivityLog.create([{
+        actorId: user._id, actorType: 'user', action: 'content_unlock_rewarded',
+        targetType: 'content', targetId: String(content._id),
+        amount: CONTENT_UNLOCK_REWARD_AMOUNT,
+        details: { unlockCount: unlocked.unlockCount }
+      }], { session });
+    }
+    return { completed: progress.completedSlots.length, unlockExpiresAt, balance };
+  });
+  if (claim.error) return res.status(claim.status).json({ error: claim.error });
   res.json({
     ok: true,
-    completed: progress.completedSlots.length,
+    completed: claim.completed,
     total: CONTENT_TASK_COUNT,
-    ...(unlockExpiresAt ? { watchUrl: `/content/${content._id}/watch`, unlockExpiresAt } : {})
+    ...(claim.unlockExpiresAt ? {
+      watchUrl: `/content/${content._id}/watch`,
+      unlockExpiresAt: claim.unlockExpiresAt,
+      unlockReward: CONTENT_UNLOCK_REWARD_AMOUNT,
+      balance: claim.balance
+    } : {})
   });
 }));
 
@@ -565,6 +598,15 @@ router.get('/refer', requireUser, asyncRoute(async (req, res) => {
   ]);
   const referralUrl = env.botUsername ? `https://t.me/${env.botUsername}?start=ref_${user.telegramId}` : '';
   res.render('user/refer', { title: 'Refer & Earn', user, referrals, milestones, claimedMilestones: claims.map((item) => item.milestone), referralUrl });
+}));
+
+router.get('/leaderboard', requireUser, [
+  query('type').optional().isIn(['income', 'referrals'])
+], validationError, asyncRoute(async (req, res) => {
+  const user = await loadCurrentUser(req);
+  const type = req.query.type === 'referrals' ? 'referrals' : 'income';
+  const rankings = type === 'referrals' ? await loadTopReferrals() : await loadTopIncome();
+  res.render('user/leaderboard', { title: 'Leaderboard', user, type, rankings });
 }));
 
 router.get('/profile', requireUser, asyncRoute(async (req, res) => {

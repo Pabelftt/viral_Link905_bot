@@ -58,9 +58,36 @@ test('home page starts with twenty items and an infinite-scroll sentinel', async
     banner: '',
     telegramWebAppUrl: 'https://example.test'
   });
-  assert.equal((rendered.match(/class="content-card"/g) || []).length, 20);
+  assert.equal((rendered.match(/class="content-card(?:\s|")/g) || []).length, 20);
   assert.match(rendered, /id="content-scroll-sentinel"/);
   assert.match(rendered, /data-has-more="true"/);
+});
+
+test('unlocked home cards get a green badge and balance header hides profile identity', async () => {
+  const contents = [{
+    _id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+    title: 'Unlocked video',
+    imageUrl: '',
+    date: new Date('2026-01-01T00:00:00Z'),
+    totalViews: 0,
+    taskProgress: { completed: 5, total: 5, unlockExpiresAt: new Date(Date.now() + 3600000) },
+    isUnlocked: true
+  }];
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'user/home.ejs'), {
+    title: 'Home',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/',
+    user: { firstName: 'Private Name', username: 'private_user', photoUrl: '', balance: 0 },
+    contents,
+    hasMoreContents: false,
+    banner: '',
+    telegramWebAppUrl: 'https://example.test'
+  });
+  assert.match(rendered, /content-card is-unlocked/);
+  assert.match(rendered, /lock-badge unlocked/);
+  assert.match(rendered, /MY BALANCE/);
+  assert.doesNotMatch(rendered, /Private Name|@private_user/);
 });
 
 test('content page renders five per-content tasks and an initially locked video link', async () => {
@@ -92,6 +119,9 @@ test('content page renders five per-content tasks and an initially locked video 
   assert.equal((rendered.match(/class="task-card content-task-card"/g) || []).length, 5);
   assert.match(rendered, /2\/5 completed/);
   assert.match(rendered, /Claim Task/);
+  assert.match(rendered, /fa-arrow-up-right-from-square/);
+  assert.match(rendered, /fa-circle-check/);
+  assert.match(rendered, /button-success/);
   assert.match(rendered, /Watch \/ Download Now/);
   assert.match(rendered, /data-unlocked-content hidden/);
   assert.doesNotMatch(rendered, /https:\/\/example\.test\/video/);
@@ -172,6 +202,23 @@ test('admin can edit a list of rotating video reward links', async () => {
   assert.match(rendered, /name="links"/);
   assert.match(rendered, /https:\/\/example\.test\/1/);
   assert.match(rendered, /after watching for one minute/);
+});
+
+test('leaderboard offers income and referral tabs with top income selected by default', async () => {
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'user/leaderboard.ejs'), {
+    title: 'Leaderboard',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/leaderboard',
+    user: { firstName: 'Test', username: '', photoUrl: '', balance: 0 },
+    type: 'income',
+    rankings: [{ user: { firstName: 'Top', lastName: 'Member', username: 'top' }, amount: 150 }]
+  });
+  assert.match(rendered, /Top Income/);
+  assert.match(rendered, /Top Referrals/);
+  assert.match(rendered, /aria-selected="true"/);
+  assert.match(rendered, /৳150\.00/);
+  assert.match(rendered, /Ranks/);
 });
 
 test('complex admin management templates render representative records', async () => {

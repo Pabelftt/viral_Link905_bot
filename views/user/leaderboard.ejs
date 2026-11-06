@@ -1,0 +1,21 @@
+<%- include('../partials/user-head', { title, csrfToken }) %>
+<%- include('../partials/user-header', { user }) %>
+<section class="page-heading">
+  <div><p class="eyebrow">COMMUNITY</p><h1>Leaderboard</h1><p class="muted">See the LinkHub community leaders.</p></div>
+  <span class="heading-art green" aria-hidden="true"><i class="fa-solid fa-ranking-star"></i></span>
+</section>
+<section class="content-section">
+  <div class="leaderboard-tabs" role="tablist" aria-label="Leaderboard category">
+    <a class="leaderboard-tab <%= type === 'income' ? 'selected' : '' %>" href="/leaderboard?type=income" role="tab" aria-selected="<%= type === 'income' %>"><i class="fa-solid fa-coins" aria-hidden="true"></i> Top Income</a>
+    <a class="leaderboard-tab <%= type === 'referrals' ? 'selected' : '' %>" href="/leaderboard?type=referrals" role="tab" aria-selected="<%= type === 'referrals' %>"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Top Referrals</a>
+  </div>
+  <div class="card leaderboard-list">
+    <% if (rankings.length) { %>
+      <% rankings.forEach((entry, index) => { %><article class="leaderboard-row"><span class="leaderboard-rank <%= index < 3 ? `rank-${index + 1}` : '' %>"><%= index + 1 %></span><div class="leaderboard-user"><strong><%= entry.user.firstName %> <%= entry.user.lastName %></strong><small><%= entry.user.username ? '@' + entry.user.username : 'LinkHub member' %></small></div><strong class="leaderboard-score"><%= type === 'income' ? `৳${Number(entry.amount).toFixed(2)}` : `${Number(entry.amount).toLocaleString()} referrals` %></strong></article><% }) %>
+    <% } else { %>
+      <div class="empty-state compact"><i class="fa-solid fa-ranking-star" aria-hidden="true"></i><h3>No rankings yet</h3><p>Complete tasks or invite friends to appear here.</p></div>
+    <% } %>
+  </div>
+</section>
+<%- include('../partials/user-nav') %>
+<%- include('../partials/user-foot') %>

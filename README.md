@@ -55,6 +55,7 @@ npm run seed
 - Configure multiple rotating video reward destinations from **Video reward links**. Users can claim ৳20 after the 60-second countdown; an empty list uses the default destination.
 - The user Mini App uses client-side navigation for internal pages, so opening a content card or switching user sections does not reload the document.
 - Content unlocks remain available for one hour, after which all five tasks must be completed again. The home feed initially shows 20 newest links and loads more as the user scrolls.
+- Each new content unlock credits ৳50 atomically. Use the **Leaderboard** tab to see lifetime top income or referral rankings.
 - Withdrawals require 10 referrals, 15 completed tasks, and 20 distinct content unlocks. The server enforces all three thresholds.
 
 ## Deployment and security

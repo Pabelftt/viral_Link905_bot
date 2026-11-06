@@ -105,7 +105,7 @@
       const fragment = document.createDocumentFragment();
       result.contents.forEach((content) => {
         const card = document.createElement('article');
-        card.className = 'content-card';
+        card.className = `content-card${unlocked ? ' is-unlocked' : ''}`;
         const image = content.imageUrl
           ? `<img src="${escapeHtml(content.imageUrl)}" alt="" loading="lazy">`
           : '<span class="image-placeholder"><i class="fa-solid fa-video" aria-hidden="true"></i></span>';
@@ -119,7 +119,7 @@
         card.dataset.navigationHref = `/content/${encodeURIComponent(content._id)}`;
         card.setAttribute('role', 'link');
         card.tabIndex = 0;
-        card.innerHTML = `<a class="content-image" href="/content/${encodeURIComponent(content._id)}">${image}<span class="lock-badge"><i class="fa-solid ${unlocked ? 'fa-lock-open' : 'fa-lock'}" aria-hidden="true"></i> ${unlocked ? 'Unlocked' : 'Locked'}</span></a>
+        card.innerHTML = `<a class="content-image" href="/content/${encodeURIComponent(content._id)}">${image}<span class="lock-badge${unlocked ? ' unlocked' : ''}"><i class="fa-solid ${unlocked ? 'fa-lock-open' : 'fa-lock'}" aria-hidden="true"></i> ${unlocked ? 'Unlocked' : 'Locked'}</span></a>
             <div class="content-card-body"><div class="content-meta"><span><i class="fa-regular fa-calendar" aria-hidden="true"></i> ${escapeHtml(date)}</span><span><i class="fa-solid fa-eye" aria-hidden="true"></i> ${Number(content.totalViews || 0).toLocaleString()}</span></div>
             <h3><a href="/content/${encodeURIComponent(content._id)}">${escapeHtml(content.title)}</a></h3><div class="content-card-footer"><span class="task-count"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tasks (${completed}/${total})</span><div class="card-actions"><button class="icon-button" data-share="${escapeHtml(content.title)}" data-url="${escapeHtml(location.origin + '/content/' + content._id)}" aria-label="Share ${escapeHtml(content.title)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button></div></div></div>`;
         fragment.append(card);
@@ -236,7 +236,9 @@
             if (taskWindow) taskWindow.opener = null;
             const result = await api(`/api/contents/${card.dataset.contentId}/tasks/${card.dataset.taskSlot}/start`, { method: 'POST' });
             card.dataset.started = 'true';
-            button.textContent = 'Claim Task';
+            button.classList.remove('button-primary');
+            button.classList.add('button-success');
+            button.innerHTML = '<i class="fa-solid fa-circle-check" aria-hidden="true"></i> Claim Task';
             card.querySelector('.task-copy small').textContent = 'Return here and claim this task.';
             const taskLink = result.taskLink || card.dataset.taskLink;
             if (!taskLink) throw new Error('This task does not have a destination link.');
@@ -247,7 +249,7 @@
           } else {
             const result = await api(`/api/contents/${card.dataset.contentId}/tasks/${card.dataset.taskSlot}/claim`, { method: 'POST' });
             card.dataset.started = 'false';
-            card.querySelector('.task-action').innerHTML = '<span class="status-pill success">Completed</span>';
+            card.querySelector('.task-action').innerHTML = '<span class="status-pill success"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Completed</span>';
             card.querySelector('.task-logo i')?.classList.replace('fa-bullseye', 'fa-circle-check');
             card.querySelector('.task-copy small').textContent = 'Task completed.';
             const progress = document.querySelector('[data-content-progress]');
@@ -268,7 +270,9 @@
                   scheduleContentUnlockExpiry(detail);
                 }
               }
-              notify('All tasks completed. Content unlocked!');
+              const balance = document.querySelector('[data-user-balance]');
+              if (balance && result.balance !== undefined) balance.textContent = `৳${Number(result.balance).toFixed(2)}`;
+              notify(`Content unlocked! ৳${Number(result.unlockReward || 50).toFixed(2)} added to your balance.`);
             } else notify('Task completed.');
           }
         } catch (error) {
@@ -398,7 +402,7 @@
         const logo = task.imageUrl ? `<img src="${escapeHtml(task.imageUrl)}" alt="">` : `<i class="fa-solid ${task.type === 'verification' ? 'fa-shield-halved' : 'fa-bullseye'}" aria-hidden="true"></i>`;
         const code = task.type === 'verification' ? '<label class="inline-code">Verification code<input data-code type="text" maxlength="100" placeholder="Enter code"></label>' : '';
         const status = task.completion?.status;
-        const action = status === 'completed' ? '<span class="status-pill success">Completed</span>' : status === 'pending' ? '<span class="status-pill">Pending review</span>' : '<button class="button button-small button-primary" data-task-action>Start Task</button>';
+        const action = status === 'completed' ? '<span class="status-pill success"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Completed</span>' : status === 'pending' ? '<span class="status-pill">Pending review</span>' : '<button class="button button-small button-primary" data-task-action><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Start Task</button>';
         card.innerHTML = `<span class="task-logo">${logo}</span><div class="task-copy"><strong>${escapeHtml(task.title)}</strong><small class="text-success">Reward ৳${Number(task.reward).toFixed(2)}</small>${code}</div><div class="task-action">${action}</div>`;
         if (status === 'started') card.dataset.started = 'true';
         attachTaskCard(card);
