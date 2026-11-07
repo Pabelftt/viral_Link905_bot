@@ -1,4 +1,6 @@
-const DEFAULT_DATA_URL = 'https://p9x9.com/data/all';
+// The public custom domain can be suspended while the Render service stays online.
+const DEFAULT_DATA_URL = 'https://p9x9.onrender.com/data/all';
+const LEGACY_DATA_URL = 'https://p9x9.com/data/all';
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const REFRESH_RETRY_MS = 60 * 1000;
 const FETCH_TIMEOUT_MS = 30 * 1000;
@@ -9,8 +11,9 @@ let cache = { items: [], fetchedAt: 0 };
 let refreshPromise = null;
 let lastRefreshFailedAt = 0;
 
-function dataUrl() {
-  return String(process.env.P9X9_DATA_URL || '').trim() || DEFAULT_DATA_URL;
+function dataUrls() {
+  const configured = String(process.env.P9X9_DATA_URL || '').trim();
+  return [...new Set([configured, DEFAULT_DATA_URL, LEGACY_DATA_URL].filter(Boolean))];
 }
 
 function safeHttpUrl(value) {
@@ -142,35 +145,42 @@ function startRefresh() {
   }
 
   refreshPromise = (async () => {
+    let lastError;
     try {
-      const response = await fetch(dataUrl(), {
-        headers: {
-          accept: 'application/json',
-          'user-agent': 'LinkHubAdmin/1.0 (+https://youtubevideoembed.onrender.com)'
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
-      });
-      if (!response.ok) throw new Error(`p9x9 responded with HTTP ${response.status}.`);
+      for (const url of dataUrls()) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              accept: 'application/json',
+              'user-agent': 'LinkHubAdmin/1.0 (+https://youtubevideoembed.onrender.com)'
+            },
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+          });
+          if (!response.ok) throw new Error(`p9x9 responded with HTTP ${response.status}.`);
 
-      const payload = await response.json();
-      const rawItems = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload?.data)
-          ? payload.data
-          : Array.isArray(payload?.items)
-            ? payload.items
-            : [];
-      const items = rawItems.map(normalizeCatalogItem).filter(Boolean);
-      if (!items.length) throw new Error('p9x9 returned no usable content.');
+          const payload = await response.json();
+          const rawItems = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.data)
+              ? payload.data
+              : Array.isArray(payload?.items)
+                ? payload.items
+                : [];
+          const items = rawItems.map(normalizeCatalogItem).filter(Boolean);
+          if (!items.length) throw new Error('p9x9 returned no usable content.');
 
-      cache = { items, fetchedAt: Date.now() };
-      lastRefreshFailedAt = 0;
-      return { ...cache, stale: false };
-    } catch (error) {
+          cache = { items, fetchedAt: Date.now() };
+          lastRefreshFailedAt = 0;
+          return { ...cache, stale: false };
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
       lastRefreshFailedAt = Date.now();
       throw Object.assign(new Error('Unable to load the p9x9 content list. Please try again shortly.'), {
         status: 502,
-        cause: error
+        cause: lastError
       });
     } finally {
       refreshPromise = null;

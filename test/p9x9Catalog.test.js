@@ -112,6 +112,27 @@ test('p9x9 catalog is fetched once and reused by concurrent searches', async () 
   }
 });
 
+test('p9x9 catalog falls back to another data URL when the first fails', async () => {
+  clearP9x9CatalogCache();
+  const originalFetch = global.fetch;
+  let calls = 0;
+  global.fetch = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error('primary data URL unavailable');
+    return { ok: true, json: async () => [rawItem()] };
+  };
+
+  try {
+    const result = await getP9x9Catalog();
+    assert.equal(result.items.length, 1);
+    assert.equal(result.stale, false);
+    assert.equal(calls, 2);
+  } finally {
+    global.fetch = originalFetch;
+    clearP9x9CatalogCache();
+  }
+});
+
 test('p9x9 fetch failures back off before the next attempt', async () => {
   clearP9x9CatalogCache();
   const originalFetch = global.fetch;
@@ -123,8 +144,10 @@ test('p9x9 fetch failures back off before the next attempt', async () => {
 
   try {
     await assert.rejects(getP9x9Catalog(), /Unable to load the p9x9 content list/);
+    const callsAfterFirstFailure = calls;
+    assert.ok(callsAfterFirstFailure >= 2, 'all candidate data URLs should be tried');
     await assert.rejects(getP9x9Catalog(), /Unable to load the p9x9 content list/);
-    assert.equal(calls, 1);
+    assert.equal(calls, callsAfterFirstFailure);
   } finally {
     global.fetch = originalFetch;
     clearP9x9CatalogCache();

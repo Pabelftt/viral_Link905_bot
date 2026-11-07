@@ -52,7 +52,7 @@ npm run seed
 - Admin state-changing forms require a session CSRF token. User sessions are created only after Telegram WebApp verification.
 - Manage links, task definitions, user balances and suspension, task reviews, withdrawals, broadcasts and the home banner from the dashboard.
 - Set up to five per-content task destinations from **Content task links**. Blank fields use the configured default link. Users can start and claim each task, and the task count is saved per user and content.
-- Import titles, images and videos directly from the p9x9 catalog on **Viral links**. The searchable picker fills the add-content form and shows an image/video preview before saving. The catalog is cached in-process for 10 minutes (with stale-data fallback), so repeated searches do not keep loading the upstream server.
+- Import titles, images and videos directly from the p9x9 catalog on **Viral links**. The searchable picker fills the add-content form and shows an image/video preview before saving. The catalog is cached in-process for 10 minutes (with stale-data fallback), so repeated searches do not keep loading the upstream server. The importer uses the p9x9 Render endpoint and falls back to the public domain if that endpoint is unavailable.
 - A per-content task can only be claimed after its server-recorded 60-second start delay. The countdown survives reloads; the server rejects early claim attempts.
 - Configure multiple rotating video reward destinations from **Video reward links**. Users can claim ৳20 after the 60-second countdown; an empty list uses the default destination.
 - The user Mini App uses client-side navigation for internal pages, so opening a content card or switching user sections does not reload the document.
