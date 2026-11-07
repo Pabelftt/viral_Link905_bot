@@ -26,6 +26,8 @@ const {
   CONTENT_UNLOCK_REWARD_AMOUNT,
   getContentTaskLinks
 } = require('../services/contentTasks');
+const { getCachedContentList } = require('../services/contentListCache');
+const { getTaskStartedAt, getTaskClaimState } = require('../services/contentTaskClaim');
 const { VIDEO_REWARD_AMOUNT, VIDEO_WATCH_SECONDS, getVideoRewardLinks } = require('../services/dailyVideoReward');
 const { loadWithdrawalStatus } = require('../services/withdrawalRequirements');
 const { loadTopIncome, loadTopReferrals } = require('../services/leaderboard');
@@ -102,22 +104,33 @@ async function addContentProgress(contents, userId) {
 }
 
 async function loadCurrentContentProgress(userId, contentId) {
-  let progress = await ContentTaskProgress.findOne({ userId, contentId }).select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean();
+  const projection = 'startedSlots taskStartedAt completedSlots unlockedAt unlockExpiresAt unlockCount';
+  let progress = await ContentTaskProgress.findOne({ userId, contentId }).select(projection).lean();
+  if (progress?.startedSlots?.length) {
+    const missingStartTimes = progress.startedSlots.filter((slot) => !getTaskStartedAt(progress, slot));
+    if (missingStartTimes.length) {
+      const now = new Date();
+      await ContentTaskProgress.updateOne(
+        { _id: progress._id },
+        { $min: Object.fromEntries(missingStartTimes.map((slot) => [`taskStartedAt.${slot}`, now])) }
+      );
+      progress = await ContentTaskProgress.findById(progress._id).select(projection).lean();
+    }
+  }
   if (progress?.completedSlots?.length === CONTENT_TASK_COUNT && !progress.unlockExpiresAt) {
     const unlockedAt = new Date();
     progress = await ContentTaskProgress.findOneAndUpdate(
       { _id: progress._id, completedSlots: { $size: CONTENT_TASK_COUNT }, unlockExpiresAt: null },
       { $set: { unlockedAt, unlockExpiresAt: new Date(unlockedAt.getTime() + CONTENT_UNLOCK_DURATION_MS), unlockCount: 1 } },
       { new: true }
-    ).select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean() || progress;
+    ).select(projection).lean() || progress;
   }
   if (progress?.unlockExpiresAt && progress.unlockExpiresAt <= new Date()) {
     progress = await ContentTaskProgress.findOneAndUpdate(
       { _id: progress._id, unlockExpiresAt: { $lte: new Date() } },
-      { $set: { startedSlots: [], completedSlots: [], unlockedAt: null, unlockExpiresAt: null } },
+      { $set: { startedSlots: [], taskStartedAt: {}, completedSlots: [], unlockedAt: null, unlockExpiresAt: null } },
       { new: true }
-    ).select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean() || await ContentTaskProgress.findById(progress._id)
-      .select('startedSlots completedSlots unlockedAt unlockExpiresAt unlockCount').lean();
+    ).select(projection).lean() || await ContentTaskProgress.findById(progress._id).select(projection).lean();
   }
   return progress;
 }
@@ -188,21 +201,33 @@ router.post('/api/contents/:id/tasks/:slot/start', requireUser, requireCsrf, [
   try {
     progress = await ContentTaskProgress.findOneAndUpdate(
       { userId: user._id, contentId: content._id },
-      { $addToSet: { startedSlots: slot }, $setOnInsert: { userId: user._id, contentId: content._id } },
+      {
+        $addToSet: { startedSlots: slot },
+        $min: { [`taskStartedAt.${slot}`]: new Date() },
+        $setOnInsert: { userId: user._id, contentId: content._id }
+      },
       { upsert: true, new: true, runValidators: true }
     );
   } catch (error) {
     if (error.code !== 11000) throw error;
-    progress = await ContentTaskProgress.findOne({ userId: user._id, contentId: content._id }).select('startedSlots completedSlots').lean();
+    progress = await ContentTaskProgress.findOne({ userId: user._id, contentId: content._id }).select('startedSlots taskStartedAt completedSlots').lean();
   }
   if (progress?.completedSlots.includes(slot)) return res.status(409).json({ error: 'This task is already completed.' });
+  const startedAt = getTaskStartedAt(progress, slot);
+  if (!startedAt) throw new Error('Unable to save the task start time.');
   if (!progress?.startedSlots.includes(slot)) {
     await ActivityLog.create({
       actorId: user._id, actorType: 'user', action: 'content_task_started',
       targetType: 'content', targetId: String(content._id), details: { slot: slot + 1 }
     });
   }
-  res.json({ ok: true, taskLink: getContentTaskLinks(content)[slot] });
+  const claimState = getTaskClaimState(startedAt);
+  res.json({
+    ok: true,
+    taskLink: getContentTaskLinks(content)[slot],
+    claimAvailableAt: claimState.claimAvailableAt,
+    serverNow: Date.now()
+  });
 }));
 
 router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, verificationLimiter, [
@@ -215,6 +240,18 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
   if (!content) return res.status(404).json({ error: 'Content not found.' });
 
   const slot = req.params.slot;
+  const currentProgress = await loadCurrentContentProgress(user._id, content._id);
+  if (currentProgress?.startedSlots.includes(slot)) {
+    const claimState = getTaskClaimState(getTaskStartedAt(currentProgress, slot));
+    if (!claimState.canClaim) {
+      return res.status(429).json({
+        error: 'Please wait one minute after starting this task before claiming it.',
+        remainingSeconds: claimState.remainingSeconds,
+        claimAvailableAt: claimState.claimAvailableAt,
+        serverNow: Date.now()
+      });
+    }
+  }
   const claim = await withMongoTransaction(async (session) => {
     const progress = await ContentTaskProgress.findOneAndUpdate(
       {
@@ -407,10 +444,15 @@ router.get('/api/contents', requireUser, [
   const filter = { isActive: true };
   if (req.query.q) filter.title = { $regex: req.query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
   const sort = req.query.sort === 'views' ? { totalViews: -1 } : req.query.sort === 'trending' ? { isTrending: -1, createdAt: -1 } : { createdAt: -1 };
-  const [contents, total] = await Promise.all([
-    Content.find(filter).select('-videoUrl -video_url -taskLinks -task_links').sort(sort).skip((page - 1) * CONTENT_PAGE_SIZE).limit(CONTENT_PAGE_SIZE).lean(),
-    Content.countDocuments(filter)
-  ]);
+  const contentListKey = JSON.stringify(['api', req.query.q || '', req.query.sort || 'latest', page]);
+  const { contents, total } = await getCachedContentList(contentListKey, async () => {
+    const [pageContents, count] = await Promise.all([
+      Content.find(filter).select('-videoUrl -video_url -taskLinks -task_links')
+        .sort(sort).skip((page - 1) * CONTENT_PAGE_SIZE).limit(CONTENT_PAGE_SIZE).lean(),
+      Content.countDocuments(filter)
+    ]);
+    return { contents: pageContents, total: count };
+  });
   const user = await loadCurrentUser(req);
   res.json({ contents: await addContentProgress(contents.map(normalizeContentRecord), user._id), page, hasMore: page * CONTENT_PAGE_SIZE < total });
 }));
@@ -627,7 +669,8 @@ router.post('/api/referral/claim/:id', requireUser, requireCsrf, [param('id').is
 router.get('/', asyncRoute(async (req, res) => {
   const user = req.session.userId ? await User.findById(req.session.userId) : null;
   const [contents, banner] = await Promise.all([
-    Content.find({ isActive: true }).select('-videoUrl -video_url -taskLinks -task_links').sort({ createdAt: -1 }).limit(CONTENT_PAGE_SIZE + 1).lean(),
+    getCachedContentList('home:latest', () => Content.find({ isActive: true })
+      .select('-videoUrl -video_url -taskLinks -task_links').sort({ createdAt: -1 }).limit(CONTENT_PAGE_SIZE + 1).lean()),
     Setting.findOne({ key: 'promoBanner' }).lean()
   ]);
   const hasMoreContents = contents.length > CONTENT_PAGE_SIZE;
@@ -700,13 +743,20 @@ router.get('/content/:id', requireUser, [param('id').isMongoId()], validationErr
   const progress = await loadCurrentContentProgress(user._id, content._id);
   const startedSlots = new Set(progress?.startedSlots || []);
   const completedSlots = new Set(progress?.completedSlots || []);
-  const tasks = getContentTaskLinks(content).map((taskLink, slot) => ({
-    slot,
-    taskLink,
-    started: startedSlots.has(slot),
-    completed: completedSlots.has(slot)
-  }));
   const serverNow = new Date();
+  const tasks = getContentTaskLinks(content).map((taskLink, slot) => {
+    const startedAt = getTaskStartedAt(progress, slot);
+    const claimState = getTaskClaimState(startedAt, serverNow.getTime());
+    return {
+      slot,
+      taskLink,
+      started: startedSlots.has(slot),
+      completed: completedSlots.has(slot),
+      claimAvailableAt: claimState.claimAvailableAt,
+      claimReady: claimState.canClaim,
+      remainingSeconds: claimState.remainingSeconds
+    };
+  });
   const allDone = completedSlots.size === CONTENT_TASK_COUNT && progress?.unlockExpiresAt > serverNow;
   const unlockExpiresAt = allDone ? progress.unlockExpiresAt : null;
   res.render('user/content', { title: content.title, user, content, tasks, allDone, completedTaskCount: completedSlots.size, unlockExpiresAt, serverNow });

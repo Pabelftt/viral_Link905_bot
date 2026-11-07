@@ -193,8 +193,11 @@ test('content page renders five per-content tasks and an initially locked video 
   const taskSlots = Array.from({ length: 5 }, (_, slot) => ({
     slot,
     taskLink: 'https://example.test/task',
-    started: slot === 2,
-    completed: slot < 2
+    started: slot === 2 || slot === 3,
+    completed: slot < 2,
+    claimReady: slot === 3,
+    claimAvailableAt: Date.now() + 35000,
+    remainingSeconds: 35
   }));
   const rendered = await ejs.renderFile(path.join(viewRoot, 'user/content.ejs'), {
     title: 'Sample video',
@@ -213,11 +216,14 @@ test('content page renders five per-content tasks and an initially locked video 
     },
     tasks: taskSlots,
     allDone: false,
-    completedTaskCount: 2
+    completedTaskCount: 2,
+    serverNow: new Date()
   });
   assert.equal((rendered.match(/class="task-card content-task-card"/g) || []).length, 5);
   assert.match(rendered, /2\/5 completed/);
   assert.match(rendered, /Claim Task/);
+  assert.match(rendered, /Claim available in <strong data-claim-countdown>00:35<\/strong>/);
+  assert.match(rendered, /data-claim-available-at="\d+"/);
   assert.match(rendered, /fa-arrow-up-right-from-square/);
   assert.match(rendered, /fa-circle-check/);
   assert.match(rendered, /fa-circle-check[^>]*><\/i> Claim Task/);

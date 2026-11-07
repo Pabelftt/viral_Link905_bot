@@ -21,6 +21,7 @@ const { CONTENT_TASK_COUNT, DEFAULT_CONTENT_TASK_LINK } = require('../services/c
 const { DEFAULT_VIDEO_REWARD_LINK } = require('../services/dailyVideoReward');
 const { ANALYTICS_PERIODS, formatDuration, getCachedAnalytics } = require('../services/analytics');
 const AnalyticsDaily = require('../models/AnalyticsDaily');
+const { clearContentListCache } = require('../services/contentListCache');
 
 const router = express.Router();
 const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
@@ -316,6 +317,7 @@ router.post('/admin/content-tasks/:id', [param('id').isMongoId()], validate, asy
   const taskLinks = contentTaskLinks(req.body);
   const content = await Content.findByIdAndUpdate(req.params.id, { $set: { taskLinks } }, { new: true, runValidators: true });
   if (!content) throw Object.assign(new Error('Content not found.'), { status: 404 });
+  clearContentListCache();
   await ActivityLog.create({
     actorType: 'admin', action: 'content_task_links_updated',
     targetType: 'content', targetId: String(content._id)
@@ -334,6 +336,7 @@ router.post('/admin/contents/bulk', [
     const update = req.body.action === 'trending' ? { isTrending: true } : { isActive: req.body.action === 'activate' };
     await Content.updateMany({ _id: { $in: ids } }, { $set: update });
   }
+  clearContentListCache();
   await ActivityLog.create({ actorType: 'admin', action: `content_bulk_${req.body.action}`, targetType: 'content', details: { count: ids.length } });
   res.redirect('/admin/contents');
 }));
@@ -354,6 +357,7 @@ router.post('/admin/contents', [
     isActive: bool(req.body.isActive),
     isTrending: bool(req.body.isTrending)
   });
+  clearContentListCache();
   res.redirect('/admin/contents');
 }));
 
@@ -372,6 +376,7 @@ router.post('/admin/contents/:id', [param('id').isMongoId(), body('title').optio
     const updated = await Content.findByIdAndUpdate(req.params.id, { $set: updates }, { runValidators: true });
     if (!updated) throw Object.assign(new Error('Content not found.'), { status: 404 });
   }
+  clearContentListCache();
   res.redirect('/admin/contents');
 }));
 

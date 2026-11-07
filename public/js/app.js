@@ -56,6 +56,8 @@
   clearInterval(window.__linkHubRewardTimer);
   clearInterval(window.__linkHubPresenceTimer);
   clearInterval(window.__linkHubUnlockCountdown);
+  clearInterval(window.__linkHubTaskClaimCountdown);
+  window.__linkHubTaskClaimCountdown = null;
   clearTimeout(window.__linkHubUnlockTimer);
   let toastTimer;
   function isDarkColor(color) {
@@ -318,10 +320,10 @@
             if (taskWindow) taskWindow.opener = null;
             const result = await api(`/api/contents/${card.dataset.contentId}/tasks/${card.dataset.taskSlot}/start`, { method: 'POST' });
             card.dataset.started = 'true';
-            button.classList.remove('button-primary');
-            button.classList.add('button-success');
-            button.innerHTML = '<i class="fa-solid fa-circle-check" aria-hidden="true"></i> Claim Task';
-            card.querySelector('.task-copy small').textContent = 'Return here and claim this task.';
+            if (!result.claimAvailableAt || !result.serverNow) throw new Error('Unable to start the task countdown.');
+            card.querySelector('.task-action').innerHTML = `<span class="status-pill" data-claim-wait data-claim-available-at="${result.claimAvailableAt}" data-server-now="${result.serverNow}"><i class="fa-solid fa-clock" aria-hidden="true"></i> Claim available in <strong data-claim-countdown>01:00</strong></span>`;
+            card.querySelector('.task-copy small').textContent = 'Wait one minute, then claim this task.';
+            initializeContentTaskClaimCountdowns();
             const taskLink = result.taskLink || card.dataset.taskLink;
             if (!taskLink) throw new Error('This task does not have a destination link.');
             if (taskWindow) taskWindow.location = taskLink;
@@ -362,10 +364,43 @@
           taskWindow?.close();
           notify(error.message, 'error');
         } finally {
-          if (button.isConnected) button.disabled = false;
+          if (button.isConnected && !card.querySelector('[data-claim-wait]')) button.disabled = false;
         }
       });
     });
+  }
+
+  function initializeContentTaskClaimCountdowns() {
+    const waiting = [...document.querySelectorAll('[data-claim-wait]')];
+    waiting.forEach((element) => {
+      if (element.dataset.countdownStarted) return;
+      element.dataset.countdownStarted = 'true';
+      element.countdownDuration = Math.max(0,
+        Number(element.dataset.claimAvailableAt) - Number(element.dataset.serverNow));
+      element.countdownStartedAt = performance.now();
+    });
+    if (!waiting.length || window.__linkHubTaskClaimCountdown) return;
+    window.__linkHubTaskClaimCountdown = setInterval(() => {
+      document.querySelectorAll('[data-claim-wait]').forEach((element) => {
+        const remainingMs = Math.max(0, element.countdownDuration - (performance.now() - element.countdownStartedAt));
+        const totalSeconds = Math.ceil(remainingMs / 1000);
+        const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+        const seconds = String(totalSeconds % 60).padStart(2, '0');
+        const countdown = element.querySelector('[data-claim-countdown]');
+        if (countdown) countdown.textContent = `${minutes}:${seconds}`;
+        if (remainingMs > 0) return;
+        const card = element.closest('.content-task-card');
+        if (!card) return;
+        card.querySelector('.task-copy small').textContent = 'Task is ready to claim.';
+        card.querySelector('.task-action').innerHTML = '<button class="button button-small button-success" data-content-task-action><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Claim Task</button>';
+        delete card.dataset.bound;
+        attachContentTaskCards();
+      });
+      if (!document.querySelector('[data-claim-wait]')) {
+        clearInterval(window.__linkHubTaskClaimCountdown);
+        window.__linkHubTaskClaimCountdown = null;
+      }
+    }, 250);
   }
 
   function scheduleContentUnlockExpiry(detail) {
@@ -609,6 +644,7 @@
 
   window.appNotify = notify;
   attachContentTaskCards();
+  initializeContentTaskClaimCountdowns();
   }
 
   window.initializeLinkHubPage = initializePage;

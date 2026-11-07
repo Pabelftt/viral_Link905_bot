@@ -52,8 +52,10 @@ npm run seed
 - Admin state-changing forms require a session CSRF token. User sessions are created only after Telegram WebApp verification.
 - Manage links, task definitions, user balances and suspension, task reviews, withdrawals, broadcasts and the home banner from the dashboard.
 - Set up to five per-content task destinations from **Content task links**. Blank fields use the configured default link. Users can start and claim each task, and the task count is saved per user and content.
+- A per-content task can only be claimed after its server-recorded 60-second start delay. The countdown survives reloads; the server rejects early claim attempts.
 - Configure multiple rotating video reward destinations from **Video reward links**. Users can claim ৳20 after the 60-second countdown; an empty list uses the default destination.
 - The user Mini App uses client-side navigation for internal pages, so opening a content card or switching user sections does not reload the document.
+- Home and paginated content lists use a bounded, 10-second in-process cache. User task/unlock progress is always loaded separately, and admin content changes clear the cache.
 - First-party analytics are available at **Admin → Analytics**: app opens, unique visitors, page views, session and page time, daily trends, top content, and per-user page engagement. The Mini App sends page events and visible-time updates; reports stream to the admin dashboard over Server-Sent Events and refresh every 15 seconds. Analytics are retained for 180 days. Content URLs are normalized to page paths; content references are stored internally for reporting. Analytics do not store IP addresses, device fingerprints, or query strings. Users can review the collection and retention details at `/privacy`.
 - Content unlocks remain available for one hour, after which all five tasks must be completed again. The home feed initially shows 20 newest links and loads more as the user scrolls.
 - Each new content unlock credits ৳50 atomically. Use the **Leaderboard** tab to see lifetime top income or referral rankings.
