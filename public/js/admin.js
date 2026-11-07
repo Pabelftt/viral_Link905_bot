@@ -248,12 +248,8 @@
 
     imagePreviewButton?.addEventListener('click', () => showImagePreview(imageInput?.value));
     videoPreviewButton?.addEventListener('click', () => showVideoPreview(videoInput?.value));
-    imageInput?.addEventListener('change', () => {
-      if (imagePreview && !imagePreview.hidden) showImagePreview(imageInput.value);
-    });
-    videoInput?.addEventListener('change', () => {
-      if (videoPreview && !videoPreview.hidden) showVideoPreview(videoInput.value);
-    });
+    imageInput?.addEventListener('input', hideImagePreview);
+    videoInput?.addEventListener('input', hideVideoPreview);
     imagePreviewMedia?.addEventListener('error', () => {
       if (!imagePreviewMedia.getAttribute('src')) return;
       imagePreviewMedia.hidden = true;
@@ -277,13 +273,11 @@
       if (fields.totalViews) fields.totalViews.value = String(item.totalViews || 0);
       [fields.title, fields.imageUrl, fields.videoUrl, fields.date, fields.totalViews].forEach(markFilled);
 
-      if (item.imageUrl) showImagePreview(item.imageUrl);
-      else hideImagePreview();
-      if (item.videoUrl) showVideoPreview(item.videoUrl);
-      else hideVideoPreview();
+      hideImagePreview();
+      hideVideoPreview();
 
       closeResults();
-      setStatus(`Loaded “${item.title}” into the form. Review it, then create the content.`);
+      setStatus(`Loaded “${item.title}” into the form. Click Preview image or Preview video to check the media.`);
       window.appNotify?.('Content details filled from p9x9.');
     };
 
