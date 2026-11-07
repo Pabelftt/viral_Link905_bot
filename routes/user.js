@@ -30,6 +30,7 @@ const { VIDEO_REWARD_AMOUNT, VIDEO_WATCH_SECONDS, getVideoRewardLinks } = requir
 const { loadWithdrawalStatus } = require('../services/withdrawalRequirements');
 const { loadTopIncome, loadTopReferrals } = require('../services/leaderboard');
 const { ANALYTICS_EVENT_TYPES, getAnalyticsPage } = require('../services/analytics');
+const { normalizeContentRecord } = require('../services/contentData');
 
 const router = express.Router();
 const CONTENT_PAGE_SIZE = 20;
@@ -406,11 +407,11 @@ router.get('/api/contents', requireUser, [
   if (req.query.q) filter.title = { $regex: req.query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
   const sort = req.query.sort === 'views' ? { totalViews: -1 } : req.query.sort === 'trending' ? { isTrending: -1, createdAt: -1 } : { createdAt: -1 };
   const [contents, total] = await Promise.all([
-    Content.find(filter).select('-videoUrl -taskLinks').sort(sort).skip((page - 1) * CONTENT_PAGE_SIZE).limit(CONTENT_PAGE_SIZE).lean(),
+    Content.find(filter).select('-videoUrl -video_url -taskLinks -task_links').sort(sort).skip((page - 1) * CONTENT_PAGE_SIZE).limit(CONTENT_PAGE_SIZE).lean(),
     Content.countDocuments(filter)
   ]);
   const user = await loadCurrentUser(req);
-  res.json({ contents: await addContentProgress(contents, user._id), page, hasMore: page * CONTENT_PAGE_SIZE < total });
+  res.json({ contents: await addContentProgress(contents.map(normalizeContentRecord), user._id), page, hasMore: page * CONTENT_PAGE_SIZE < total });
 }));
 
 router.get('/api/tasks', requireUser, asyncRoute(async (req, res) => {
@@ -625,11 +626,11 @@ router.post('/api/referral/claim/:id', requireUser, requireCsrf, [param('id').is
 router.get('/', asyncRoute(async (req, res) => {
   const user = req.session.userId ? await User.findById(req.session.userId) : null;
   const [contents, banner] = await Promise.all([
-    Content.find({ isActive: true }).select('-videoUrl -taskLinks').sort({ createdAt: -1 }).limit(CONTENT_PAGE_SIZE + 1).lean(),
+    Content.find({ isActive: true }).select('-videoUrl -video_url -taskLinks -task_links').sort({ createdAt: -1 }).limit(CONTENT_PAGE_SIZE + 1).lean(),
     Setting.findOne({ key: 'promoBanner' }).lean()
   ]);
   const hasMoreContents = contents.length > CONTENT_PAGE_SIZE;
-  const firstPage = contents.slice(0, CONTENT_PAGE_SIZE);
+  const firstPage = contents.slice(0, CONTENT_PAGE_SIZE).map(normalizeContentRecord);
   const contentCards = user ? await addContentProgress(firstPage, user._id) : firstPage;
   res.render('user/home', { title: 'LinkHub', user, contents: contentCards, hasMoreContents, banner: banner?.value || '' });
 }));
@@ -672,7 +673,7 @@ router.get('/privacy', requireUser, asyncRoute(async (req, res) => {
 router.get('/content/:id/watch', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
   const [content, progress] = await Promise.all([
-    Content.findOne({ _id: req.params.id, isActive: true }).select('videoUrl'),
+    Content.findOne({ _id: req.params.id, isActive: true }).lean(),
     ContentTaskProgress.findOne({
       userId: user._id,
       contentId: req.params.id,
@@ -682,13 +683,14 @@ router.get('/content/:id/watch', requireUser, [param('id').isMongoId()], validat
   ]);
   if (!content) return res.status(404).render('errors/404', { title: 'Content not found' });
   if (!progress) return res.redirect(`/content/${req.params.id}`);
-  if (!content.videoUrl) return res.status(404).render('errors/404', { title: 'Video unavailable' });
-  return res.redirect(content.videoUrl);
+  const videoUrl = normalizeContentRecord(content).videoUrl;
+  if (!videoUrl) return res.status(404).render('errors/404', { title: 'Video unavailable' });
+  return res.redirect(videoUrl);
 }));
 
 router.get('/content/:id', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
-  const content = await Content.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $inc: { totalViews: 1 } }, { new: true }).lean();
+  const content = normalizeContentRecord(await Content.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $inc: { totalViews: 1 } }, { new: true }).lean());
   if (!content) return res.status(404).render('errors/404', { title: 'Content not found' });
   const progress = await loadCurrentContentProgress(user._id, content._id);
   const startedSlots = new Set(progress?.startedSlots || []);
