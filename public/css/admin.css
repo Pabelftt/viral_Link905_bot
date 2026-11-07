@@ -112,15 +112,13 @@ td input[type="checkbox"], th input[type="checkbox"] { width: 16px; min-height: 
 .catalog-result-copy small { color: var(--muted); font-size: 10px; }
 .catalog-status { margin: 0; color: var(--muted); font-size: 10px; }
 .catalog-status.error { color: var(--danger); }
-.catalog-preview { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; align-items: start; padding-top: 11px; border-top: 1px solid var(--border); }
-.catalog-preview-media { display: grid; gap: 8px; }
-.catalog-preview-media img, .catalog-preview-media video { width: 100%; max-height: 210px; border-radius: 10px; background: #000; object-fit: contain; }
-.catalog-preview-media img { object-fit: cover; }
-.catalog-preview-copy { display: grid; gap: 4px; align-content: start; }
-.catalog-preview-copy .eyebrow { margin-bottom: 2px; }
-.catalog-preview-copy strong { font-size: 13px; }
-.catalog-preview-copy small { color: var(--muted); font-size: 10px; }
-.catalog-preview[hidden], .catalog-results[hidden], .catalog-spinner[hidden], .catalog-preview-media img[hidden], .catalog-preview-media video[hidden], .catalog-result img[hidden] { display: none; }
+.field-with-preview { display: grid; gap: 8px; align-content: start; }
+.preview-toggle { justify-self: start; }
+.link-preview { padding: 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.link-preview img, .link-preview video { display: block; width: 100%; max-height: 320px; border-radius: 8px; background: #000; object-fit: contain; }
+.link-preview img { object-fit: cover; }
+.link-preview-error { margin: 0; color: var(--danger); font-size: 11px; }
+.catalog-results[hidden], .catalog-spinner[hidden], .link-preview[hidden], .link-preview img[hidden], .link-preview video[hidden], .link-preview-error[hidden], .catalog-result img[hidden] { display: none; }
 .is-autofilled { animation: catalog-field-flash 1.5s ease-out; }
 @keyframes catalog-field-flash {
   0% { background-color: color-mix(in srgb, var(--primary) 20%, var(--surface)); border-color: var(--primary); }
@@ -197,6 +195,5 @@ td input[type="checkbox"], th input[type="checkbox"] { width: 16px; min-height: 
   .admin-form-grid { grid-template-columns: 1fr; }
   .content-assignment, .wide-field { grid-column: auto; }
   .content-picker-list { grid-template-columns: 1fr; }
-  .catalog-preview { grid-template-columns: 1fr; }
   .catalog-result img { width: 46px; height: 34px; flex-basis: 46px; }
 }

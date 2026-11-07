@@ -101,12 +101,16 @@
     const resultsBox = catalogPicker.querySelector('[data-catalog-results]');
     const status = catalogPicker.querySelector('[data-catalog-status]');
     const spinner = catalogPicker.querySelector('[data-catalog-spinner]');
-    const preview = catalogPicker.querySelector('[data-catalog-preview]');
-    const previewImage = catalogPicker.querySelector('[data-catalog-image]');
-    const previewVideo = catalogPicker.querySelector('[data-catalog-video]');
-    const previewTitle = catalogPicker.querySelector('[data-catalog-title]');
-    const previewMeta = catalogPicker.querySelector('[data-catalog-meta]');
-    const previewSource = catalogPicker.querySelector('[data-catalog-source]');
+    const imageInput = createContentForm.elements.imageUrl;
+    const videoInput = createContentForm.elements.videoUrl;
+    const imagePreview = document.querySelector('[data-image-preview]');
+    const videoPreview = document.querySelector('[data-video-preview]');
+    const imagePreviewMedia = imagePreview?.querySelector('[data-image-preview-media]');
+    const videoPreviewMedia = videoPreview?.querySelector('[data-video-preview-media]');
+    const imagePreviewError = imagePreview?.querySelector('[data-image-preview-error]');
+    const videoPreviewError = videoPreview?.querySelector('[data-video-preview-error]');
+    const imagePreviewButton = document.querySelector('[data-preview-image-button]');
+    const videoPreviewButton = document.querySelector('[data-preview-video-button]');
     const catalogCache = new Map();
     const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
     const CLIENT_CACHE_MAX_ENTRIES = 40;
@@ -157,6 +161,112 @@
       return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
     };
 
+    const isHttpUrl = (value) => {
+      try {
+        return ['http:', 'https:'].includes(new URL(value).protocol);
+      } catch {
+        return false;
+      }
+    };
+
+    const hideImagePreview = () => {
+      if (!imagePreview) return;
+      imagePreview.hidden = true;
+      if (imagePreviewMedia) {
+        imagePreviewMedia.removeAttribute('src');
+        imagePreviewMedia.hidden = true;
+      }
+      if (imagePreviewError) {
+        imagePreviewError.textContent = '';
+        imagePreviewError.hidden = true;
+      }
+    };
+
+    const showImagePreview = (value) => {
+      if (!imagePreview || !imagePreviewMedia || !imagePreviewError) return;
+      const url = String(value || '').trim();
+      imagePreview.hidden = false;
+      imagePreviewMedia.hidden = true;
+      imagePreviewMedia.removeAttribute('src');
+      imagePreviewError.textContent = '';
+      imagePreviewError.hidden = true;
+
+      if (!url) {
+        imagePreviewError.textContent = 'Paste an image URL first.';
+        imagePreviewError.hidden = false;
+        return;
+      }
+      if (!isHttpUrl(url)) {
+        imagePreviewError.textContent = 'Enter a valid HTTP/HTTPS image URL.';
+        imagePreviewError.hidden = false;
+        return;
+      }
+      imagePreviewMedia.src = url;
+      imagePreviewMedia.hidden = false;
+    };
+
+    const hideVideoPreview = () => {
+      if (!videoPreview) return;
+      videoPreview.hidden = true;
+      if (videoPreviewMedia) {
+        videoPreviewMedia.pause();
+        videoPreviewMedia.removeAttribute('src');
+        videoPreviewMedia.hidden = true;
+        videoPreviewMedia.load();
+      }
+      if (videoPreviewError) {
+        videoPreviewError.textContent = '';
+        videoPreviewError.hidden = true;
+      }
+    };
+
+    const showVideoPreview = (value) => {
+      if (!videoPreview || !videoPreviewMedia || !videoPreviewError) return;
+      const url = String(value || '').trim();
+      videoPreview.hidden = false;
+      videoPreviewMedia.pause();
+      videoPreviewMedia.removeAttribute('src');
+      videoPreviewMedia.hidden = true;
+      videoPreviewMedia.load();
+      videoPreviewError.textContent = '';
+      videoPreviewError.hidden = true;
+
+      if (!url) {
+        videoPreviewError.textContent = 'Paste a video URL first.';
+        videoPreviewError.hidden = false;
+        return;
+      }
+      if (!isHttpUrl(url)) {
+        videoPreviewError.textContent = 'Enter a valid HTTP/HTTPS video URL.';
+        videoPreviewError.hidden = false;
+        return;
+      }
+      videoPreviewMedia.src = url;
+      videoPreviewMedia.hidden = false;
+      videoPreviewMedia.load();
+    };
+
+    imagePreviewButton?.addEventListener('click', () => showImagePreview(imageInput?.value));
+    videoPreviewButton?.addEventListener('click', () => showVideoPreview(videoInput?.value));
+    imageInput?.addEventListener('change', () => {
+      if (imagePreview && !imagePreview.hidden) showImagePreview(imageInput.value);
+    });
+    videoInput?.addEventListener('change', () => {
+      if (videoPreview && !videoPreview.hidden) showVideoPreview(videoInput.value);
+    });
+    imagePreviewMedia?.addEventListener('error', () => {
+      if (!imagePreviewMedia.getAttribute('src')) return;
+      imagePreviewMedia.hidden = true;
+      imagePreviewError.textContent = 'Image could not be loaded. Check the URL.';
+      imagePreviewError.hidden = false;
+    });
+    videoPreviewMedia?.addEventListener('error', () => {
+      if (!videoPreviewMedia.getAttribute('src')) return;
+      videoPreviewMedia.hidden = true;
+      videoPreviewError.textContent = 'Video could not be loaded. Check the URL.';
+      videoPreviewError.hidden = false;
+    });
+
     const selectItem = (item) => {
       if (!item) return;
       const fields = createContentForm.elements;
@@ -167,33 +277,10 @@
       if (fields.totalViews) fields.totalViews.value = String(item.totalViews || 0);
       [fields.title, fields.imageUrl, fields.videoUrl, fields.date, fields.totalViews].forEach(markFilled);
 
-      preview.hidden = false;
-      previewTitle.textContent = item.title || '';
-      previewMeta.textContent = itemMeta(item);
-      const source = [
-        item.duration ? `Duration ${item.duration}` : '',
-        item.date ? new Date(item.date).toLocaleDateString() : '',
-        item.routeName ? `p9x9/${item.routeName}` : ''
-      ].filter(Boolean).join(' · ');
-      previewSource.textContent = source;
-
-      previewVideo.pause();
-      if (item.imageUrl) {
-        previewImage.src = item.imageUrl;
-        previewImage.hidden = false;
-      } else {
-        previewImage.removeAttribute('src');
-        previewImage.hidden = true;
-      }
-      if (item.videoUrl) {
-        previewVideo.src = item.videoUrl;
-        previewVideo.hidden = false;
-        previewVideo.load();
-      } else {
-        previewVideo.removeAttribute('src');
-        previewVideo.hidden = true;
-        previewVideo.load();
-      }
+      if (item.imageUrl) showImagePreview(item.imageUrl);
+      else hideImagePreview();
+      if (item.videoUrl) showVideoPreview(item.videoUrl);
+      else hideVideoPreview();
 
       closeResults();
       setStatus(`Loaded “${item.title}” into the form. Review it, then create the content.`);

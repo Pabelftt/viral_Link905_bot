@@ -18,20 +18,25 @@
         </div>
         <div class="catalog-results" id="p9x9-results" role="listbox" aria-label="p9x9 search results" data-catalog-results hidden></div>
         <p class="catalog-status" data-catalog-status aria-live="polite">Loading latest p9x9 content…</p>
-        <div class="catalog-preview" data-catalog-preview hidden>
-          <div class="catalog-preview-media">
-            <img data-catalog-image alt="Selected content preview" hidden>
-            <video data-catalog-video controls preload="metadata" playsinline hidden></video>
-          </div>
-          <div class="catalog-preview-copy">
-            <p class="eyebrow">SELECTED CONTENT</p>
-            <strong data-catalog-title></strong>
-            <small data-catalog-meta></small>
-            <small data-catalog-source></small>
-          </div>
+      </div>
+      <label>Title<input name="title" required maxlength="180"></label><label>Publish date<input name="date" type="date"></label><label>Total views<input name="totalViews" type="number" min="0" value="0"></label><label>Task count (fixed)<input name="requiredTaskCount" type="number" min="5" max="5" value="5" readonly></label>
+      <div class="field-with-preview wide-field">
+        <label>Image URL<input name="imageUrl" type="url"></label>
+        <button type="button" class="button button-small button-muted preview-toggle" data-preview-image-button><i class="fa-solid fa-image" aria-hidden="true"></i> Preview image</button>
+        <div class="link-preview" data-image-preview hidden>
+          <img data-image-preview-media alt="Image preview" hidden>
+          <p class="link-preview-error" data-image-preview-error hidden></p>
         </div>
       </div>
-      <label>Title<input name="title" required maxlength="180"></label><label>Image URL<input name="imageUrl" type="url"></label><label>Video URL<input name="videoUrl" type="url"></label><label>Publish date<input name="date" type="date"></label><label>Total views<input name="totalViews" type="number" min="0" value="0"></label><label>Task count (fixed)<input name="requiredTaskCount" type="number" min="5" max="5" value="5" readonly></label><label class="check-label"><input name="isActive" type="checkbox" checked> Active</label><label class="check-label"><input name="isTrending" type="checkbox"> Trending</label><button class="button button-primary">Create content</button></form></details>
+      <div class="field-with-preview wide-field">
+        <label>Video URL<input name="videoUrl" type="url"></label>
+        <button type="button" class="button button-small button-muted preview-toggle" data-preview-video-button><i class="fa-solid fa-play" aria-hidden="true"></i> Preview video</button>
+        <div class="link-preview" data-video-preview hidden>
+          <video data-video-preview-media controls preload="metadata" playsinline hidden></video>
+          <p class="link-preview-error" data-video-preview-error hidden></p>
+        </div>
+      </div>
+      <label class="check-label"><input name="isActive" type="checkbox" checked> Active</label><label class="check-label"><input name="isTrending" type="checkbox"> Trending</label><button class="button button-primary">Create content</button></form></details>
       <div class="bulk-toolbar"><form method="post" action="/admin/contents/bulk" id="bulk-contents-form"><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form><button type="submit" form="bulk-contents-form" class="button button-muted" data-bulk-action="activate">Activate selected</button><button type="submit" form="bulk-contents-form" class="button button-muted" data-bulk-action="trending">Mark trending</button><button type="submit" form="bulk-contents-form" class="button button-danger" data-bulk-action="delete">Delete selected</button><input type="hidden" form="bulk-contents-form" name="action" value=""><div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-select-all aria-label="Select all contents"></th><th>Content</th><th>Views</th><th>Tasks</th><th>Status</th><th>Actions</th></tr></thead><tbody><% items.forEach((item) => { %><tr><td><input type="checkbox" class="row-select" form="bulk-contents-form" name="ids" value="<%= item._id %>" aria-label="Select <%= item.title %>"></td><td><strong><%= item.title %></strong><small><%= new Date(item.date).toLocaleDateString() %></small></td><td><%= item.totalViews.toLocaleString() %></td><td><%= item.requiredTaskCount %></td><td><span class="status-pill <%= item.isActive ? 'success' : '' %>"><%= item.isActive ? 'Active' : 'Inactive' %><%= item.isTrending ? ' · Trending' : '' %></span></td><td><details><summary class="text-link">Edit</summary><form method="post" action="/admin/contents/<%= item._id %>" class="stack-form compact-edit"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><label>Title<input name="title" value="<%= item.title %>" required maxlength="180"></label><label>Image URL<input name="imageUrl" type="url" value="<%= item.imageUrl %>"></label><label>Video URL<input name="videoUrl" type="url" value="<%= item.videoUrl %>"></label><label>Publish date<input name="date" type="date" value="<%= new Date(item.date).toISOString().slice(0, 10) %>"></label><label>Total views<input name="totalViews" type="number" min="0" value="<%= item.totalViews %>"></label><label>Required tasks<input name="requiredTaskCount" type="number" min="0" value="<%= item.requiredTaskCount %>"></label><label>Active<select name="isActive"><option value="true" <%= item.isActive ? 'selected' : '' %>>Yes</option><option value="false" <%= !item.isActive ? 'selected' : '' %>>No</option></select></label><label>Trending<select name="isTrending"><option value="true" <%= item.isTrending ? 'selected' : '' %>>Yes</option><option value="false" <%= !item.isTrending ? 'selected' : '' %>>No</option></select></label><button class="button button-small button-primary">Save</button></form><form method="post" action="/admin/contents/<%= item._id %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="action" value="delete"><button class="icon-button confirm-action" data-confirm="Delete this content?" aria-label="Delete content"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></form></details></td></tr><% }) %></tbody></table></div></div>
     </section>
   <% } else if (section === 'tasks') { %>

@@ -386,7 +386,7 @@ test('complex admin management templates render representative records', async (
   assert.match(renderedTasks, /Selected contents/);
 });
 
-test('admin contents form includes the searchable p9x9 import picker and preview', async () => {
+test('admin contents form includes the searchable p9x9 import picker and field previews', async () => {
   const rendered = await ejs.renderFile(path.join(viewRoot, 'admin/section.ejs'), {
     title: 'Viral links',
     csrfToken: 'test-csrf-token',
@@ -400,7 +400,9 @@ test('admin contents form includes the searchable p9x9 import picker and preview
   assert.match(rendered, /data-catalog-picker/);
   assert.match(rendered, /data-catalog-search/);
   assert.match(rendered, /data-catalog-results/);
-  assert.match(rendered, /data-catalog-image/);
-  assert.match(rendered, /data-catalog-video/);
+  assert.match(rendered, /data-preview-image-button/);
+  assert.match(rendered, /data-preview-video-button/);
+  assert.match(rendered, /data-image-preview/);
+  assert.match(rendered, /data-video-preview/);
   assert.match(rendered, /Import from p9x9/);
 });
