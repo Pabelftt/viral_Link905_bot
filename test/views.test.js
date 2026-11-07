@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ejs = require('ejs');
+const { normalizeContentRecord } = require('../services/contentData');
 
 const viewRoot = path.resolve(__dirname, '..', 'views');
 
@@ -234,25 +235,25 @@ test('content page renders five per-content tasks and an initially locked video 
     currentPath: '/content/aaaaaaaaaaaaaaaaaaaaaaaa',
     telegramWebAppUrl: 'https://example.test',
     user: { firstName: 'Test', username: 'test', photoUrl: '', balance: 0 },
-    content: {
+    content: normalizeContentRecord({
       _id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
       title: 'Sample video',
       imageUrl: 'https://example.test/image.jpg',
-      videoUrl: 'https://example.test/video',
+      video_url: 'https://youtube.com/watch?v=sample01',
       date: new Date('2026-01-01T00:00:00Z'),
       totalViews: 10
-    },
+    }),
     tasks: taskSlots.map((task) => ({ ...task, started: true, completed: true })),
     allDone: true,
     completedTaskCount: 5,
     unlockExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
     serverNow: new Date()
   });
-  assert.match(unlocked, /href="\/content\/aaaaaaaaaaaaaaaaaaaaaaaa\/watch"/);
+  assert.match(unlocked, /href="https:\/\/youtube\.com\/watch\?v=sample01"/);
+  assert.doesNotMatch(unlocked, /youtubevideoembed\.onrender\.com\/content\//);
   assert.match(unlocked, /class="button button-primary watch-video-button" data-watch-video target="_blank"/);
   assert.match(unlocked, /data-server-now="\d+"/);
   assert.match(unlocked, /Time remaining: <strong data-unlock-countdown>01:00:00<\/strong>/);
-  assert.doesNotMatch(unlocked, /https:\/\/example\.test\/video/);
 });
 
 test('admin can edit all five per-content task destinations', async () => {

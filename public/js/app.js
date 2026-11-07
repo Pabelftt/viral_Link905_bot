@@ -342,8 +342,8 @@
             if (result.completed === result.total) {
               const unlocked = document.querySelector('[data-unlocked-content]');
               const videoLink = unlocked?.querySelector('[data-watch-video]');
-              if (videoLink && result.watchUrl) {
-                videoLink.href = result.watchUrl;
+              if (videoLink && result.videoUrl) {
+                videoLink.href = result.videoUrl;
                 videoLink.hidden = false;
                 unlocked.hidden = false;
                 const detail = document.querySelector('.content-detail');

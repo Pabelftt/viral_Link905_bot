@@ -4,6 +4,7 @@ const contentSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true, maxlength: 180 },
   imageUrl: { type: String, trim: true, default: '' },
   videoUrl: { type: String, trim: true, default: '' },
+  video_url: { type: String, trim: true, default: undefined, select: false },
   taskLinks: { type: [String], default: () => [] },
   date: { type: Date, default: Date.now },
   totalViews: { type: Number, min: 0, default: 0 },

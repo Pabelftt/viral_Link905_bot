@@ -210,7 +210,8 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
   param('slot').isInt({ min: 0, max: CONTENT_TASK_COUNT - 1 }).toInt()
 ], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
-  const content = await Content.findOne({ _id: req.params.id, isActive: true }).select('_id');
+  const content = normalizeContentRecord(await Content.findOne({ _id: req.params.id, isActive: true })
+    .select('_id videoUrl +video_url').lean());
   if (!content) return res.status(404).json({ error: 'Content not found.' });
 
   const slot = req.params.slot;
@@ -272,7 +273,7 @@ router.post('/api/contents/:id/tasks/:slot/claim', requireUser, requireCsrf, ver
     completed: claim.completed,
     total: CONTENT_TASK_COUNT,
     ...(claim.unlockExpiresAt ? {
-      watchUrl: `/content/${content._id}/watch`,
+      videoUrl: content.videoUrl,
       unlockExpiresAt: claim.unlockExpiresAt,
       serverNow: Date.now(),
       unlockReward: CONTENT_UNLOCK_REWARD_AMOUNT,
@@ -673,7 +674,7 @@ router.get('/privacy', requireUser, asyncRoute(async (req, res) => {
 router.get('/content/:id/watch', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
   const [content, progress] = await Promise.all([
-    Content.findOne({ _id: req.params.id, isActive: true }).lean(),
+    Content.findOne({ _id: req.params.id, isActive: true }).select('+video_url').lean(),
     ContentTaskProgress.findOne({
       userId: user._id,
       contentId: req.params.id,
@@ -690,7 +691,11 @@ router.get('/content/:id/watch', requireUser, [param('id').isMongoId()], validat
 
 router.get('/content/:id', requireUser, [param('id').isMongoId()], validationError, asyncRoute(async (req, res) => {
   const user = await loadCurrentUser(req);
-  const content = normalizeContentRecord(await Content.findOneAndUpdate({ _id: req.params.id, isActive: true }, { $inc: { totalViews: 1 } }, { new: true }).lean());
+  const content = normalizeContentRecord(await Content.findOneAndUpdate(
+    { _id: req.params.id, isActive: true },
+    { $inc: { totalViews: 1 } },
+    { new: true }
+  ).select('+video_url').lean());
   if (!content) return res.status(404).render('errors/404', { title: 'Content not found' });
   const progress = await loadCurrentContentProgress(user._id, content._id);
   const startedSlots = new Set(progress?.startedSlots || []);
