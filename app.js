@@ -12,6 +12,7 @@ const adminRoutes = require('./routes/admin');
 const { attachCsrfToken } = require('./middleware/csrf');
 const { notFound, errorHandler } = require('./middleware/errors');
 const { launchBot, registerWebhookRoute } = require('./services/telegramBot');
+const { warmP9x9Catalog } = require('./services/p9x9Catalog');
 
 const app = express();
 let embedOrigin;
@@ -35,6 +36,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com', 'data:'],
       imgSrc: ["'self'", 'https:', 'data:'],
+      mediaSrc: ["'self'", 'https:'],
       frameSrc: ["'self'", ...(embedOrigin ? [embedOrigin] : []), 'https://www.youtube.com', 'https://www.youtube-nocookie.com'],
       connectSrc: ["'self'", 'https://telegram.org', 'https://*.telegram.org'],
       objectSrc: ["'none'"],
@@ -73,6 +75,7 @@ app.use(errorHandler);
 
 async function start() {
   await connectDatabase();
+  warmP9x9Catalog();
   const server = app.listen(env.port, async () => {
     console.info(`LinkHub listening on port ${env.port}`);
     try {

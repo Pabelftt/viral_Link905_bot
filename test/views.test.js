@@ -385,3 +385,22 @@ test('complex admin management templates render representative records', async (
   assert.match(renderedContents, /Sample link/);
   assert.match(renderedTasks, /Selected contents/);
 });
+
+test('admin contents form includes the searchable p9x9 import picker and preview', async () => {
+  const rendered = await ejs.renderFile(path.join(viewRoot, 'admin/section.ejs'), {
+    title: 'Viral links',
+    csrfToken: 'test-csrf-token',
+    appName: 'LinkHub',
+    currentPath: '/admin/contents',
+    adminUsername: 'admin',
+    section: 'contents',
+    items: []
+  });
+  assert.match(rendered, /id="create-content-form"/);
+  assert.match(rendered, /data-catalog-picker/);
+  assert.match(rendered, /data-catalog-search/);
+  assert.match(rendered, /data-catalog-results/);
+  assert.match(rendered, /data-catalog-image/);
+  assert.match(rendered, /data-catalog-video/);
+  assert.match(rendered, /Import from p9x9/);
+});

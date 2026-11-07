@@ -22,6 +22,7 @@ const { DEFAULT_VIDEO_REWARD_LINK } = require('../services/dailyVideoReward');
 const { ANALYTICS_PERIODS, formatDuration, getCachedAnalytics } = require('../services/analytics');
 const AnalyticsDaily = require('../models/AnalyticsDaily');
 const { clearContentListCache } = require('../services/contentListCache');
+const { searchP9x9Catalog } = require('../services/p9x9Catalog');
 
 const router = express.Router();
 const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
@@ -287,6 +288,21 @@ router.post('/admin/users/:id/status', [param('id').isMongoId(), body('isSuspend
 router.get('/admin/contents', asyncRoute(async (req, res) => {
   const items = await Content.find().sort({ createdAt: -1 }).limit(100).lean();
   res.render('admin/section', { title: 'Viral links', section: 'contents', items, csrfToken: req.session.csrfToken });
+}));
+
+router.get('/admin/api/p9x9/contents', [
+  query('q').optional().isString().trim().isLength({ max: 100 }),
+  query('limit').optional().isInt({ min: 1, max: 100 }).toInt()
+], validate, asyncRoute(async (req, res) => {
+  const result = await searchP9x9Catalog(String(req.query.q || ''), Number(req.query.limit || 40));
+  res.set('Cache-Control', 'private, max-age=60');
+  res.json({
+    items: result.items,
+    total: result.total,
+    sourceTotal: result.sourceTotal,
+    fetchedAt: new Date(result.fetchedAt).toISOString(),
+    stale: result.stale
+  });
 }));
 
 router.get('/admin/content-tasks', asyncRoute(async (req, res) => {

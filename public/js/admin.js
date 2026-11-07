@@ -94,6 +94,268 @@
     if (button.dataset.bulkAction === 'delete' && !window.confirm('Delete the selected content? This cannot be undone.')) event.preventDefault();
   }));
 
+  const catalogPicker = document.querySelector('[data-catalog-picker]');
+  const createContentForm = document.getElementById('create-content-form');
+  if (catalogPicker && createContentForm) {
+    const searchInput = catalogPicker.querySelector('[data-catalog-search]');
+    const resultsBox = catalogPicker.querySelector('[data-catalog-results]');
+    const status = catalogPicker.querySelector('[data-catalog-status]');
+    const spinner = catalogPicker.querySelector('[data-catalog-spinner]');
+    const preview = catalogPicker.querySelector('[data-catalog-preview]');
+    const previewImage = catalogPicker.querySelector('[data-catalog-image]');
+    const previewVideo = catalogPicker.querySelector('[data-catalog-video]');
+    const previewTitle = catalogPicker.querySelector('[data-catalog-title]');
+    const previewMeta = catalogPicker.querySelector('[data-catalog-meta]');
+    const previewSource = catalogPicker.querySelector('[data-catalog-source]');
+    const catalogCache = new Map();
+    const CLIENT_CACHE_TTL_MS = 5 * 60 * 1000;
+    const CLIENT_CACHE_MAX_ENTRIES = 40;
+    const RESULT_LIMIT = 40;
+    let currentItems = [];
+    let activeIndex = -1;
+    let searchSequence = 0;
+    let debounceTimer = 0;
+
+    const setStatus = (message, isError = false) => {
+      status.textContent = message;
+      status.classList.toggle('error', isError);
+    };
+
+    const relativeTime = (value) => {
+      const time = new Date(value).getTime();
+      if (!Number.isFinite(time)) return '';
+      const minutes = Math.max(0, Math.round((Date.now() - time) / 60000));
+      if (minutes < 1) return 'updated just now';
+      if (minutes < 60) return `updated ${minutes} min ago`;
+      const hours = Math.round(minutes / 60);
+      return `updated ${hours} hr${hours === 1 ? '' : 's'} ago`;
+    };
+
+    const itemMeta = (item) => [
+      item.duration ? `Duration ${item.duration}` : '',
+      `${Number(item.totalViews || 0).toLocaleString()} views`,
+      Array.isArray(item.categories) && item.categories.length ? item.categories.slice(0, 3).join(', ') : ''
+    ].filter(Boolean).join(' · ');
+
+    const closeResults = () => {
+      resultsBox.hidden = true;
+      searchInput.setAttribute('aria-expanded', 'false');
+      searchInput.removeAttribute('aria-activedescendant');
+      activeIndex = -1;
+    };
+
+    const markFilled = (field) => {
+      if (!field) return;
+      field.classList.remove('is-autofilled');
+      void field.offsetWidth;
+      field.classList.add('is-autofilled');
+      window.setTimeout(() => field.classList.remove('is-autofilled'), 1500);
+    };
+
+    const toDateInput = (value) => {
+      const date = value ? new Date(value) : new Date();
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+    };
+
+    const selectItem = (item) => {
+      if (!item) return;
+      const fields = createContentForm.elements;
+      if (fields.title) fields.title.value = item.title || '';
+      if (fields.imageUrl) fields.imageUrl.value = item.imageUrl || '';
+      if (fields.videoUrl) fields.videoUrl.value = item.videoUrl || '';
+      if (fields.date) fields.date.value = toDateInput(item.date);
+      if (fields.totalViews) fields.totalViews.value = String(item.totalViews || 0);
+      [fields.title, fields.imageUrl, fields.videoUrl, fields.date, fields.totalViews].forEach(markFilled);
+
+      preview.hidden = false;
+      previewTitle.textContent = item.title || '';
+      previewMeta.textContent = itemMeta(item);
+      const source = [
+        item.duration ? `Duration ${item.duration}` : '',
+        item.date ? new Date(item.date).toLocaleDateString() : '',
+        item.routeName ? `p9x9/${item.routeName}` : ''
+      ].filter(Boolean).join(' · ');
+      previewSource.textContent = source;
+
+      previewVideo.pause();
+      if (item.imageUrl) {
+        previewImage.src = item.imageUrl;
+        previewImage.hidden = false;
+      } else {
+        previewImage.removeAttribute('src');
+        previewImage.hidden = true;
+      }
+      if (item.videoUrl) {
+        previewVideo.src = item.videoUrl;
+        previewVideo.hidden = false;
+        previewVideo.load();
+      } else {
+        previewVideo.removeAttribute('src');
+        previewVideo.hidden = true;
+        previewVideo.load();
+      }
+
+      closeResults();
+      setStatus(`Loaded “${item.title}” into the form. Review it, then create the content.`);
+      window.appNotify?.('Content details filled from p9x9.');
+    };
+
+    const renderResults = (data, query) => {
+      currentItems = Array.isArray(data.items) ? data.items : [];
+      activeIndex = -1;
+      resultsBox.replaceChildren();
+
+      if (!currentItems.length) {
+        closeResults();
+        setStatus(query ? `No p9x9 content matched “${query}”.` : 'No p9x9 content is available right now.');
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      currentItems.forEach((item, index) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'catalog-result';
+        option.id = `p9x9-option-${index}`;
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.title = item.title || '';
+
+        const image = document.createElement('img');
+        image.loading = 'lazy';
+        image.alt = '';
+        if (item.imageUrl) image.src = item.imageUrl;
+        else image.hidden = true;
+
+        const copy = document.createElement('span');
+        copy.className = 'catalog-result-copy';
+        const title = document.createElement('strong');
+        title.textContent = item.title || '';
+        const meta = document.createElement('small');
+        meta.textContent = itemMeta(item);
+        copy.append(title, meta);
+        option.append(image, copy);
+        option.addEventListener('click', () => selectItem(item));
+        fragment.append(option);
+      });
+      resultsBox.append(fragment);
+      resultsBox.hidden = false;
+      searchInput.setAttribute('aria-expanded', 'true');
+
+      const total = Number(data.total ?? currentItems.length);
+      const sourceTotal = Number(data.sourceTotal ?? total);
+      let summary;
+      if (query) {
+        summary = `${total.toLocaleString()} match${total === 1 ? '' : 'es'}`;
+        if (currentItems.length < total) summary += ` · showing first ${currentItems.length}`;
+      } else {
+        summary = `Showing latest ${currentItems.length} of ${sourceTotal.toLocaleString()} videos`;
+      }
+      if (data.stale) summary += ' · cached data';
+      else if (data.fetchedAt) summary += ` · ${relativeTime(data.fetchedAt)}`;
+      setStatus(summary);
+    };
+
+    const loadCatalog = (query) => {
+      const key = query.toLocaleLowerCase();
+      const now = Date.now();
+      const cached = catalogCache.get(key);
+      if (cached && cached.expiresAt > now) return cached.promise;
+
+      const entry = { expiresAt: Number.POSITIVE_INFINITY, promise: null };
+      entry.promise = fetch(`/admin/api/p9x9/contents?q=${encodeURIComponent(query)}&limit=${RESULT_LIMIT}`, {
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' }
+      }).then(async (response) => {
+        const contentType = response.headers.get('content-type') || '';
+        const data = contentType.includes('application/json') ? await response.json().catch(() => ({})) : {};
+        if (!response.ok || !contentType.includes('application/json')) {
+          throw new Error(response.redirected
+            ? 'Admin session expired. Reload the page and sign in again.'
+            : data.error || `Search failed (${response.status}).`);
+        }
+        entry.expiresAt = Date.now() + CLIENT_CACHE_TTL_MS;
+        return data;
+      }).catch((error) => {
+        if (catalogCache.get(key) === entry) catalogCache.delete(key);
+        throw error;
+      });
+      catalogCache.set(key, entry);
+      while (catalogCache.size > CLIENT_CACHE_MAX_ENTRIES) {
+        catalogCache.delete(catalogCache.keys().next().value);
+      }
+      return entry.promise;
+    };
+
+    const runSearch = async (query) => {
+      const sequence = ++searchSequence;
+      spinner.hidden = false;
+      setStatus(query ? `Searching for “${query}”…` : 'Loading latest p9x9 content…');
+      try {
+        const data = await loadCatalog(query);
+        if (sequence !== searchSequence) return;
+        renderResults(data, query);
+      } catch (error) {
+        if (sequence !== searchSequence) return;
+        currentItems = [];
+        closeResults();
+        setStatus(error.message || 'Unable to load p9x9 content.', true);
+      } finally {
+        if (sequence === searchSequence) spinner.hidden = true;
+      }
+    };
+
+    searchInput.addEventListener('input', () => {
+      window.clearTimeout(debounceTimer);
+      const query = searchInput.value.trim();
+      debounceTimer = window.setTimeout(() => runSearch(query), 250);
+    });
+
+    searchInput.addEventListener('focus', () => {
+      if (resultsBox.hidden) runSearch(searchInput.value.trim());
+    });
+
+    searchInput.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const options = [...resultsBox.querySelectorAll('.catalog-result')];
+        if (!options.length) {
+          runSearch(searchInput.value.trim());
+          return;
+        }
+        if (resultsBox.hidden) {
+          resultsBox.hidden = false;
+          searchInput.setAttribute('aria-expanded', 'true');
+        }
+        activeIndex = event.key === 'ArrowDown'
+          ? Math.min(activeIndex + 1, options.length - 1)
+          : Math.max(activeIndex - 1, 0);
+        options.forEach((option, index) => {
+          const active = index === activeIndex;
+          option.classList.toggle('is-active', active);
+          option.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        searchInput.setAttribute('aria-activedescendant', options[activeIndex].id);
+        options[activeIndex].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (!resultsBox.hidden && activeIndex >= 0) selectItem(currentItems[activeIndex]);
+        else if (!resultsBox.hidden && currentItems.length === 1) selectItem(currentItems[0]);
+        else runSearch(searchInput.value.trim());
+        return;
+      }
+      if (event.key === 'Escape') closeResults();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!catalogPicker.contains(event.target)) closeResults();
+    });
+
+    window.setTimeout(() => runSearch(''), 150);
+  }
+
   const taskForm = document.getElementById('task-form');
   if (taskForm) {
     const picker = taskForm.querySelector('.content-picker');
